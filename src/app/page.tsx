@@ -38,17 +38,38 @@ export default function Home() {
   };
 
   const handleManualSubmit = async () => {
-    if (!connected || !account) return;
-
-    // 3. Network Check (Requirement: Must be on Testnet)
-    const networkName = (window as any).aptos?.network?.().name?.toLowerCase() || (window as any).petra?.network?.().toLowerCase();
-    // Note: Wallet adapter version might expose it via 'network' directly
-    const adapterNetwork = (useWallet as any).network?.name?.toLowerCase();
-
-    // Simple but effective check for Petra/Aptos Standard
-    if (networkName && !networkName.includes('testnet')) {
-      alert("Vui lòng chuyển sang mạng Testnet trên Petra để Sync điểm.");
+    if (!connected || !account) {
+      alert("Vui lòng kết nối ví Petra trước khi Sync.");
       return;
+    }
+
+    // 1. More robust network check
+    let networkName = "";
+    try {
+      // Try Petra/Standard API
+      const petra = (window as any).petra || (window as any).aptos;
+      if (petra?.network) {
+        const net = await petra.network();
+        networkName = (typeof net === 'string' ? net : net.name || "").toLowerCase();
+      }
+    } catch (e) {
+      console.warn("Network check error", e);
+    }
+
+    if (networkName && !networkName.includes('testnet')) {
+      alert(`Đang ở mạng ${networkName.toUpperCase()}. Vui lòng chuyển sang TESTNET trên ví Petra.`);
+      return;
+    }
+
+    // 2. ONLY sync if score is higher (Requirement)
+    if (score === 0) {
+      alert("Hãy bắt đầu chơi để có điểm trước khi Sync!");
+      return;
+    }
+
+    if (score <= bestScore && bestScore > 0) {
+      const confirmResult = confirm(`Điểm hiện tại (${score}) thấp hơn kỷ lục (${bestScore}). Bạn có chắc muốn gửi dữ liệu này không?`);
+      if (!confirmResult) return;
     }
 
     setIsSubmittingTx(true);
@@ -59,7 +80,7 @@ export default function Home() {
         {
           grid: grid.map(row => row.map(t => t?.value || null)),
           score,
-          bestScore,
+          bestScore: Math.max(score, bestScore),
           timestamp: Date.now()
         }
       );
@@ -67,7 +88,12 @@ export default function Home() {
       alert("Submission Successful! TX: " + response.hash);
     } catch (e) {
       console.error("Manual submit failed", e);
-      alert("Submission Failed. Check console or network settings.");
+      // If error is reject, we don't need a scary alert
+      if (e.toString().includes("rejected")) {
+        alert("Giao dịch bị từ chối.");
+      } else {
+        alert("Submission Failed. Hãy kiểm tra kết nối mạng hoặc ví.");
+      }
     } finally {
       setIsSubmittingTx(false);
     }
