@@ -635,8 +635,27 @@ async function connectWalletCore() {
     throw new Error('Wallet Adapter Core chưa được tải!');
   }
 
+  // Chờ tối đa 3 giây để core adapter detect được ví Petra
+  const maxLoops = 30;
+  for (let i = 0; i < maxLoops; i++) {
+    const petraWallet = core.wallets.find(w => w.name === 'Petra');
+    if (petraWallet && (petraWallet.readyState === 'Installed' || petraWallet.readyState === 'Loadable')) {
+      break;
+    }
+    await new Promise(r => setTimeout(r, 100)); // Đợi 100ms
+  }
+
+  const petraWallet = core.wallets.find(w => w.name === 'Petra');
+  if (!petraWallet || (petraWallet.readyState !== 'Installed' && petraWallet.readyState !== 'Loadable')) {
+    throw new Error('not installed');
+  }
+
   try {
-    await core.connect("Petra");
+    const connectResult = await core.connect("Petra");
+    if (!core.account) {
+      console.log('[Petra] core.wallets =', core.wallets);
+      throw new Error('Connect succeeded but account is null. Please ensure Petra is unlocked.');
+    }
     return core.account; // { address, publicKey }
   } catch (error) {
     if (error?.message?.includes('User rejected')) {
