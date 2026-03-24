@@ -801,17 +801,17 @@ function buildBlobPayload() {
   window.crypto.getRandomValues(p3Array);
   const p3Hex = '0x' + Array.from(p3Array).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  // p4 — chunks
-  const p4 = '1';
+  // p4 — chunks (u32 -> Number)
+  const p4 = 1;
 
-  // p5 — blob size
+  // p5 — blob size (u64 -> String)
   const p5 = '1024';
 
-  // p6 — payment tier (u8)
-  const p6 = '1';
+  // p6 — payment tier (u8 -> Number)
+  const p6 = 1;
 
-  // p7 — encoding (u8)
-  const p7 = '1';
+  // p7 — encoding (u8 -> Number)
+  const p7 = 1;
 
   // Chuẩn AIP-62 JSON Payload
   return {
