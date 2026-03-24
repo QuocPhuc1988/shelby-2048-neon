@@ -668,7 +668,7 @@ async function getPetraProvider(timeoutMs = 1500) {
     window.addEventListener('aptos:wallet-registered', onRegistered);
 
     // Gửi yêu cầu các ví AIP-62 announce lại chính nó
-    window.dispatchEvent(new Event('aptos:wallet-discovery-request'));
+    window.dispatchEvent(new CustomEvent('aptos:wallet-discovery-request'));
 
     // 4. Timeout & Fallback (trường hợp extension chậm hoặc là app mobile Mises)
     setTimeout(() => {
