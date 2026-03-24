@@ -231,7 +231,7 @@ export default function Home() {
             <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl rounded-2xl flex flex-col items-center justify-center p-8 text-center border-2 border-[#ff2a75]/50">
               <Trophy size={80} className="text-[#ff2a75] mb-4 animate-pulse drop-shadow-[0_0_20px_rgba(255,42,117,1)]" />
               <h2 className="text-5xl font-black mb-2 tracking-tighter text-white">LEVEL END</h2>
-              <p className="text-gray-400 mb-8 max-w-[300px] text-sm font-bold uppercase tracking-tight">Cày Leaderboard thành công! Hãy gửi điểm số lên Shelby Protocol ngay.</p>
+              <p className="text-gray-400 mb-8 max-w-[300px] text-sm font-bold uppercase tracking-tight">Successfully scored! Sync your achievement to Shelby Protocol now.</p>
 
               <div className="flex flex-col gap-3 w-full max-w-[280px]">
                 <button
@@ -244,7 +244,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => initGame()}
-                  className="w-full py-4 bg-white/5 hover:bg-white/10 text-white/60 font-black rounded-xl transition-all uppercase tracking-widest text-xs"
+                  className="w-full py-4 bg-white/5 hover:bg-white/10 text-white/80 font-black rounded-xl transition-all uppercase tracking-widest text-xs"
                 >
                   PLAY AGAIN
                 </button>
