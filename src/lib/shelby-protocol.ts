@@ -38,7 +38,7 @@ export async function submitGameTransaction(
                 typeArguments: [],
                 functionArguments: [
                     "2048_SHELBY_RECORD",                    // p1: Name (string)
-                    Date.now().toString(),                  // p2: Metadata/Timestamp (stringified u64)
+                    (Math.floor(Date.now() / 1000) + 86400 * 30).toString(), // p2: Expiration (stringified u64, 30 days future)
                     p3_hex,                                 // p3: Data Commitment (hex string)
                     1,                                      // p4: Index/Size (number)
                     gameData.score.toString(),              // p5: Score/Size (stringified u64)
