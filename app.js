@@ -669,9 +669,15 @@ async function connectWallet() {
     $walletLbl.textContent = 'CONNECT WALLET';
     // Give the user a targeted message
     if (window.aptos && (window.aptos.isOKXWallet || window.aptos.isPontem)) {
-      showToast('⚠ Phát hiện ví khác (không phải Petra). Vui lòng cài & dùng Petra Wallet.', 5500);
+      showToast('⚠ Phát hiện ví khác. Chỉ dùng Petra Wallet: petra.app', 5500);
     } else {
-      showToast('⚠ Không tìm thấy Petra Wallet. Cài extension tại petra.app (PC) hoặc mở trang trực tiếp trong Petra App (iOS/Android).', 6000);
+      showToast(
+        '⚠ Không tìm thấy Petra Wallet.\n' +
+        '📱 Android/Mises: play.google.com/store/apps/details?id=com.nemo.petra.wallet\n' +
+        '🍎 iOS: apps.apple.com/us/app/petra-aptos-wallet/id6443583416\n' +
+        '💻 PC: petra.app',
+        8000
+      );
     }
     return;
   }
@@ -695,11 +701,11 @@ async function connectWallet() {
 
     const reason = (err?.message || err?.code || '').toString().toLowerCase();
     if (reason.includes('reject') || reason.includes('denied') || reason.includes('cancel') || err?.code === 4001) {
-      showToast('⚠ Vui lòng xác nhận kết nối trong ví Petra.', 4000);
+      showToast('⚠ Verification required on Petra wallet to continue.', 4500);
     } else if (reason.includes('already') || reason.includes('pending')) {
-      showToast('⚠ Đang có yêu cầu kết nối. Kiểm tra pop-up Petra.', 4000);
+      showToast('⚠ A connection request is already pending. Check your Petra pop-up.', 4000);
     } else {
-      showToast('✗ Kết nối Petra thất bại: ' + (err?.message?.slice(0, 60) || 'Unknown error'), 4500);
+      showToast('✗ Petra connection failed: ' + (err?.message?.slice(0, 60) || 'Unknown error'), 4500);
     }
   }
 }
@@ -730,15 +736,23 @@ $walletBtn.addEventListener('click', () => {
      p7 encoding    : u8
 ═══════════════════════════════════════════════ */
 function buildBlobPayload() {
-  // p1 — blob name (unique per run, branded)
-  const p1 = `GiaPhat_2048_${score}`;
+  // p1 — blob name: branded + score
+  const p1 = `GiaPhat_2048_Score_${score}`;
 
   // p2 — expiration in microseconds: (now + 24 h) × 1000
   const p2 = ((Date.now() + 86400000) * 1000).toString();
 
-  // p3 — data commitment: random 32-byte vector
-  const p3 = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-    .map(b => '0x' + b.toString(16).padStart(2, '0'));
+  // p3 — data commitment: deterministic 32-byte hash derived from game grid
+  //       Uses grid values folded into 32 slots via XOR + position weighting
+  const flatGrid = [];
+  for (let r = 0; r < GRID_SIZE; r++)
+    for (let c = 0; c < GRID_SIZE; c++)
+      flatGrid.push(grid[r][c]?.value || 0);
+  const p3 = Array.from({ length: 32 }, (_, i) => {
+    const v = flatGrid[i % 16];
+    const byte = ((v ^ (i * 31) ^ (score & 0xff)) + i * 7) & 0xff;
+    return '0x' + byte.toString(16).padStart(2, '0');
+  });
 
   // p4 — chunkset count (u32)
   const p4 = '1';
