@@ -1186,3 +1186,63 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════
+   BRAND CREDIT — byGiaPhat SDZ  (Cyberpunk Neon)
+   ════════════════════════════════════════════════════════ */
+.brand-credit {
+  font-family: var(--font-mono);
+  font-size: clamp(0.55rem, 2vw, 0.68rem);
+  letter-spacing: 3px;
+  margin-top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  line-height: 1;
+}
+
+.brand-by {
+  color: var(--text-dim);
+  font-size: 0.85em;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.brand-name {
+  color: var(--neon-pink);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-shadow:
+    0 0 6px var(--neon-pink),
+    0 0 16px rgba(255, 0, 255, 0.55),
+    0 0 30px rgba(255, 0, 255, 0.25);
+  animation: brandNeonFlicker 4s steps(1) infinite;
+}
+
+@keyframes brandNeonFlicker {
+
+  0%,
+  85%,
+  87%,
+  89%,
+  100% {
+    text-shadow:
+      0 0 6px var(--neon-pink),
+      0 0 16px rgba(255, 0, 255, 0.55),
+      0 0 30px rgba(255, 0, 255, 0.25);
+    opacity: 1;
+  }
+
+  86% {
+    text-shadow: none;
+    opacity: 0.6;
+  }
+
+  88% {
+    text-shadow:
+      0 0 10px var(--neon-cyan),
+      0 0 22px rgba(0, 255, 255, 0.5);
+    opacity: 0.9;
+    color: var(--neon-cyan);
+  }
+}

@@ -25,7 +25,7 @@ const PULSE_THRESHOLD = 1024;
 
 // ── Real Shelby Contract ──────────────────────
 const SHELBY_ADDRESS = '0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a';
-const SHELBY_MODULE = `${SHELBY_ADDRESS}::shelby_protocol::register_blob`;
+const SHELBY_MODULE = `${SHELBY_ADDRESS}::blob_metadata::register_blob`;
 
 /* ═══════════════════════════════════════════════
    STATE
@@ -616,13 +616,15 @@ function throttledMove(dir) {
 }
 
 /* ═══════════════════════════════════════════════
-   PETRA WALLET — Only window.aptos
-   Compatible with Mises mobile browser
+   PETRA WALLET — Only window.aptos (isPetra)
+   Mises browser: must have Petra extension installed
 ═══════════════════════════════════════════════ */
 function getPetraProvider() {
-  // Standard Petra: window.aptos
-  // Mises browser injects window.aptos as well via its dApp bridge
-  if (typeof window !== 'undefined' && window.aptos) return window.aptos;
+  // Strictly require Petra: window.aptos must exist AND carry isPetra flag.
+  // This prevents accidentally using OKX, Pontem, or other injected providers.
+  if (typeof window !== 'undefined' && window.aptos && window.aptos.isPetra) {
+    return window.aptos;
+  }
   return null;
 }
 
@@ -630,7 +632,12 @@ async function connectWallet() {
   const provider = getPetraProvider();
 
   if (!provider) {
-    showToast('⚠ Petra Wallet not found. Install Petra or use Mises browser.', 4500);
+    // Distinguish between no wallet at all vs. a non-Petra wallet injected
+    if (typeof window !== 'undefined' && window.aptos && !window.aptos.isPetra) {
+      showToast('⚠ Detected non-Petra wallet. Please install & use Petra Wallet only.', 5000);
+    } else {
+      showToast('⚠ Petra Wallet not found. Install the Petra extension to continue.', 4500);
+    }
     return;
   }
 
@@ -650,7 +657,13 @@ async function connectWallet() {
     console.error('[Petra] Connect error:', err);
     $walletLbl.textContent = 'CONNECT WALLET';
     walletConnected = false;
-    showToast('✗ Connection rejected.', 3000);
+    // Mises browser may reject the connection pop-up
+    const reason = err?.message || '';
+    if (reason.toLowerCase().includes('reject') || reason.toLowerCase().includes('denied') || reason.toLowerCase().includes('cancel')) {
+      showToast('✗ Kết nối bị từ chối. Vui lòng chấp nhận trong ví Petra.', 4000);
+    } else {
+      showToast('✗ Không thể kết nối Petra: ' + (reason.slice(0, 60) || 'Unknown error'), 4000);
+    }
   }
 }
 
@@ -669,40 +682,43 @@ $walletBtn.addEventListener('click', () => {
 });
 
 /* ═══════════════════════════════════════════════
-   SHELBY register_blob
-   Payload: { score, grid[16], total_play_time }
-   JSON → UTF-8 → Hex → entry_function_payload
+   SHELBY blob_metadata::register_blob
+   7 tham số theo tệp Move của Shelby:
+     p1 name        : string
+     p2 expiration  : u64  (microseconds)
+     p3 data_commit : vector<u8>  (32-byte dummy)
+     p4 chunkset_cnt: u32
+     p5 blob_size   : u64
+     p6 payment_tier: u8
+     p7 encoding    : u8
 ═══════════════════════════════════════════════ */
-function jsonToHex(jsonStr) {
-  const bytes = new TextEncoder().encode(jsonStr);
-  return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
+function buildBlobPayload() {
+  // p1 — blob name (unique per run)
+  const p1 = `Shelby_2048_Score_${score}`;
 
-function buildShelbyPayload() {
-  const flatGrid = [];
-  for (let r = 0; r < GRID_SIZE; r++)
-    for (let c = 0; c < GRID_SIZE; c++)
-      flatGrid.push(grid[r][c]?.value || 0);
+  // p2 — expiration in microseconds (now + 24 h)
+  const p2 = (BigInt(Date.now()) * 1000n + 86400000000n).toString();
 
-  const blob = {
-    protocol: 'shelby_v2_hardcore',
-    score,
-    best_tile: highestTile(grid),
-    grid: flatGrid,
-    total_play_time: playTime,   // seconds
-    timestamp: Date.now(),
-    wallet: walletAddress,
-  };
+  // p3 — data commitment: 32-byte zero vector (dummy)
+  const p3 = Array(32).fill('0x00');
+
+  // p4 — chunkset count (u32)
+  const p4 = '1';
+
+  // p5 — blob size in bytes (u64)
+  const p5 = '1024';
+
+  // p6 — payment tier (u8)
+  const p6 = '1';
+
+  // p7 — encoding (u8)
+  const p7 = '1';
 
   return {
     type: 'entry_function_payload',
     function: SHELBY_MODULE,
     type_arguments: [],
-    arguments: [
-      jsonToHex(JSON.stringify(blob)),  // blob_data: vector<u8>
-      score.toString(),                 // score: u64
-      playTime.toString(),              // total_play_time: u64 (seconds)
-    ],
+    arguments: [p1, p2, p3, p4, p5, p6, p7],
   };
 }
 
@@ -732,7 +748,7 @@ async function syncToShelby() {
   $syncBtn.disabled = true;
 
   try {
-    const payload = buildShelbyPayload();
+    const payload = buildBlobPayload();
     console.log('[Shelby] Payload →', SHELBY_MODULE, payload);
 
     const txn = await provider.signAndSubmitTransaction(payload);
