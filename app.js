@@ -624,16 +624,17 @@ function throttledMove(dir) {
 ═══════════════════════════════════════════════ */
 
 /**
- * 1. window.aptos nếu isPetra === true  (chuẩn — PC extension & Petra Mobile)
- * 2. window.petra nếu tồn tại           (Petra extension cũ / tránh xung đột ví)
- * 3. null nếu không tìm thấy Petra
+ * 1. window.aptos  — Petra Extension (mới) & Petra Mobile dApp browser
+ * 2. window.petra  — Petra Extension (cũ, một số phiên bản)
+ * 3. null          — không tìm thấy Petra
+ *
+ * ⚠ Bỏ điều kiện isPetra cứng nhắc: một số bản Petra không set flag này
+ *   nhưng vẫn inject window.aptos và hoạt động đúng khi gọi .connect()
  */
 function getPetraProvider() {
   if (typeof window === 'undefined') return null;
-  // Ưu tiên 1: window.aptos với isPetra flag
-  if (window.aptos && window.aptos.isPetra) return window.aptos;
-  // Ưu tiên 2: window.petra (một số phiên bản Petra extension cũ)
-  if (window.petra) return window.petra;
+  if (window.aptos) return window.aptos;   // Petra Extension / Petra Mobile
+  if (window.petra) return window.petra;   // Petra Extension (cũ)
   return null;
 }
 
