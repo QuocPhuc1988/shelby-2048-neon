@@ -15,6 +15,7 @@ type GameState = {
     gameOver: boolean;
     gameWon: boolean;
     isSyncing: boolean;
+    isMoving: boolean;
     initGame: () => void;
     move: (direction: 'up' | 'down' | 'left' | 'right', address?: string) => void;
     loadFromShelby: (address: string) => Promise<void>;
@@ -34,11 +35,12 @@ export const useGameStore = create<GameState>()(
             gameOver: false,
             gameWon: false,
             isSyncing: false,
+            isMoving: false,
 
             initGame: () => {
                 let newGrid = createEmptyGrid();
                 newGrid = spawnTile(spawnTile(newGrid));
-                set({ grid: newGrid, score: 0, gameOver: false, gameWon: false });
+                set({ grid: newGrid, score: 0, gameOver: false, gameWon: false, isMoving: false });
             },
 
             loadFromShelby: async (address: string) => {
@@ -46,7 +48,6 @@ export const useGameStore = create<GameState>()(
                 set({ isSyncing: true });
                 const remoteData = await ShelbyService.loadGame(address);
                 if (remoteData) {
-                    // Re-map simple values to Tile objects
                     const restoredGrid = remoteData.grid.map((row, r) =>
                         row.map((val, c) => val ? { id: Math.random(), value: val, position: [r, c] as [number, number] } : null)
                     );
@@ -60,12 +61,15 @@ export const useGameStore = create<GameState>()(
             },
 
             move: async (direction, address) => {
-                const { grid, score, bestScore, gameOver } = get();
-                if (gameOver) return;
+                const { grid, score, bestScore, gameOver, isMoving } = get();
+                if (gameOver || isMoving) return;
 
                 const { newGrid, newScore, moved } = moveGrid(grid, direction);
 
                 if (moved) {
+                    // Lock movement to prevent "too fast" sensitivity (User requirement)
+                    set({ isMoving: true });
+
                     const gridWithSpawn = spawnTile(newGrid);
                     const isGameOver = checkGameOver(gridWithSpawn);
                     const updatedScore = score + newScore;
@@ -78,17 +82,25 @@ export const useGameStore = create<GameState>()(
                         gameOver: isGameOver,
                     });
 
-                    // Background Sync to Shelby if address is provided
+                    // Release lock after animation delay (100ms for responsiveness)
+                    setTimeout(() => set({ isMoving: false }), 100);
+
+                    // Background Sync
                     if (address) {
-                        const { ShelbyService } = await import('@/lib/shelby');
-                        set({ isSyncing: true });
-                        await ShelbyService.saveGame(address, {
-                            grid: gridWithSpawn.map(row => row.map(t => t?.value || null)),
-                            score: updatedScore,
-                            bestScore: updatedBest,
-                            timestamp: Date.now()
-                        });
-                        set({ isSyncing: false });
+                        try {
+                            const { ShelbyService } = await import('@/lib/shelby');
+                            set({ isSyncing: true });
+                            await ShelbyService.saveGame(address, {
+                                grid: gridWithSpawn.map(row => row.map(t => t?.value || null)),
+                                score: updatedScore,
+                                bestScore: updatedBest,
+                                timestamp: Date.now()
+                            });
+                        } catch (e) {
+                            console.error("Sync failed", e);
+                        } finally {
+                            set({ isSyncing: false });
+                        }
                     }
                 }
             },
@@ -117,7 +129,7 @@ function spawnTile(grid: (Tile | null)[][]): (Tile | null)[][] {
     const [r, c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
     const newGrid = grid.map(row => [...row]);
     newGrid[r][c] = {
-        id: nextId++,
+        id: Date.now() + nextId++,
         value: Math.random() < 0.9 ? 2 : 4,
         position: [r, c],
     };
@@ -130,9 +142,8 @@ function moveGrid(grid: (Tile | null)[][], direction: string) {
     let moved = false;
     let newScore = 0;
 
-    // Rotation logic to simplify moving (always move left)
-    const rotations = { up: 1, right: 2, down: 3, left: 0 };
-    const numRotations = rotations[direction as keyof typeof rotations];
+    const rotations: Record<string, number> = { up: 1, right: 2, down: 3, left: 0 };
+    const numRotations = rotations[direction] || 0;
 
     for (let i = 0; i < numRotations; i++) newGrid = rotateGrid(newGrid);
 
@@ -144,7 +155,7 @@ function moveGrid(grid: (Tile | null)[][], direction: string) {
             if (c < row.length - 1 && row[c].value === row[c + 1].value) {
                 const combinedValue = row[c].value * 2;
                 newRow.push({
-                    id: nextId++,
+                    id: Date.now() + nextId++,
                     value: combinedValue,
                     position: [r, newRow.length],
                 });
@@ -158,13 +169,12 @@ function moveGrid(grid: (Tile | null)[][], direction: string) {
         }
 
         while (newRow.length < GRID_SIZE) newRow.push(null);
-        if (JSON.stringify(newGrid[r]) !== JSON.stringify(newRow)) moved = true;
+        if (JSON.stringify(newGrid[r].map(t => t?.value)) !== JSON.stringify(newRow.map(t => t?.value))) moved = true;
         newGrid[r] = newRow;
     }
 
     for (let i = 0; i < (4 - numRotations) % 4; i++) newGrid = rotateGrid(newGrid);
 
-    // Update positions after rotations
     for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
             if (newGrid[r][c]) newGrid[r][c]!.position = [r, c];
