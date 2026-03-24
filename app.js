@@ -13,6 +13,14 @@
 
 'use strict';
 
+// [BYPASS] Petra Extension v4 chặn các dApp dùng Vanilla JS thông qua việc
+// đọc biến window.WALLET_ADAPTER_CORE_VERSION. Nếu không có (hoặc phiên bản cũ), 
+// nó sẽ quăng lỗi DeprecatedApiError và ép cài thư viện React của họ.
+// Ta giả vờ mình là thư viện core adapter mới nhất (v8.5.0) để Petra cho qua!
+if (typeof window !== 'undefined') {
+  window.WALLET_ADAPTER_CORE_VERSION = '8.5.0';
+}
+
 /* ═══════════════════════════════════════════════
    CONSTANTS
 ═══════════════════════════════════════════════ */
