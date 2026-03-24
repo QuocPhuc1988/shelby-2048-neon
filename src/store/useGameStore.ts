@@ -82,8 +82,8 @@ export const useGameStore = create<GameState>()(
                         gameOver: isGameOver,
                     });
 
-                    // Release lock after animation delay (100ms for responsiveness)
-                    setTimeout(() => set({ isMoving: false }), 100);
+                    // Release lock after animation delay (400ms for stability and sync)
+                    setTimeout(() => set({ isMoving: false }), 400);
 
                     // Background Sync
                     if (address) {

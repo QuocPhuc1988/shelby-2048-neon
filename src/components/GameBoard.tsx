@@ -75,7 +75,7 @@ const GameBoard: React.FC = () => {
                                         y: pos.top,
                                     }}
                                     exit={{ scale: 0.5, opacity: 0 }}
-                                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                                    transition={{ type: 'spring', stiffness: 200, damping: 25 }}
                                     className={`absolute flex items-center justify-center rounded-xl text-2xl font-black select-none
                                     ${TILE_COLORS[tile.value] || 'bg-[#ffc107] text-white shadow-xl'}`}
                                     style={{

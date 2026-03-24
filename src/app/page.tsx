@@ -39,6 +39,18 @@ export default function Home() {
 
   const handleManualSubmit = async () => {
     if (!connected || !account) return;
+
+    // 3. Network Check (Requirement: Must be on Testnet)
+    const networkName = (window as any).aptos?.network?.().name?.toLowerCase() || (window as any).petra?.network?.().toLowerCase();
+    // Note: Wallet adapter version might expose it via 'network' directly
+    const adapterNetwork = (useWallet as any).network?.name?.toLowerCase();
+
+    // Simple but effective check for Petra/Aptos Standard
+    if (networkName && !networkName.includes('testnet')) {
+      alert("Vui lòng chuyển sang mạng Testnet trên Petra để Sync điểm.");
+      return;
+    }
+
     setIsSubmittingTx(true);
     try {
       const response = await submitGameTransaction(
@@ -55,7 +67,7 @@ export default function Home() {
       alert("Submission Successful! TX: " + response.hash);
     } catch (e) {
       console.error("Manual submit failed", e);
-      alert("Submission Failed. Check console for details.");
+      alert("Submission Failed. Check console or network settings.");
     } finally {
       setIsSubmittingTx(false);
     }
@@ -64,6 +76,7 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const addr = isAuthenticated ? account?.address?.toString() : undefined;
+      // Movement is now throttled by 400ms inside the store
       if (['ArrowUp', 'w', 'W'].includes(e.key)) move('up', addr);
       if (['ArrowDown', 's', 'S'].includes(e.key)) move('down', addr);
       if (['ArrowLeft', 'a', 'A'].includes(e.key)) move('left', addr);
@@ -108,11 +121,11 @@ export default function Home() {
             {connected && (
               <button
                 onClick={handleManualSubmit}
-                disabled={isSubmittingTx}
-                className="flex items-center gap-2 px-4 py-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-all rounded-xl border border-cyan-500/20 active:scale-95 disabled:opacity-50"
+                disabled={isSubmittingTx} // DISABLED directly after click (Requirement 3)
+                className="flex items-center gap-2 px-4 py-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-all rounded-xl border border-cyan-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmittingTx ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
-                <span className="font-bold text-xs uppercase tracking-wider">Finish & Submit</span>
+                <span className="font-bold text-xs uppercase tracking-wider">{isSubmittingTx ? 'Processing...' : 'Finish & Submit'}</span>
               </button>
             )}
 
