@@ -850,29 +850,24 @@ async function syncToShelby() {
 
     let txn;
 
-    // THE SECRET: Sử dụng @aptos-labs/ts-sdk (đã bundle) để biên dịch JSON thành Bytecode 
-    // AnyRawTransaction chuẩn xác mà ví cài sẵn chuẩn AIP-62 yêu cầu!
-    if (!window.aptosSDK) throw new Error('Aptos SDK Bundle chưa tải');
+    // THE SECRET: Petra v4's V2 Transaction parser is BUGGED and crashes on new TS-SDK objects
+    // because it expects `transaction.payload.functionArguments`.
+    // BUT! Petra's V1 fallback parser (triggered if you pass `{ payload }`) STILL WORKS!
+    // Since we fixed our Number vs String argument typing, the V1 parser will accept it perfectly.
+    const v1TransactionPayload = {
+      type: 'entry_function_payload',
+      function: payload.function,
+      type_arguments: payload.type_arguments,
+      arguments: payload.arguments
+    };
 
-    console.log('[Shelby] Compiling payload via TS-SDK...');
-    const { Aptos, AptosConfig, Network } = window.aptosSDK;
-    const config = new AptosConfig({ network: Network.TESTNET });
-    const aptos = new Aptos(config);
+    console.log('[Shelby] Preparing to send AIP-62 V1 JSON Payload:', v1TransactionPayload);
 
-    const transaction = await aptos.transaction.build.simple({
-      sender: walletAddress,
-      data: {
-        function: payload.function,
-        functionArguments: payload.arguments,
-        typeArguments: payload.type_arguments
-      }
-    });
-
-    console.log('[Shelby] Using AIP-62 signAndSubmitTransaction');
     const feature = window._aip62Petra.features['aptos:signAndSubmitTransaction'];
     if (!feature) throw new Error('Ví không hỗ trợ signAndSubmitTransaction');
 
-    txn = await feature.signAndSubmitTransaction({ transaction });
+    // Mấu chốt: Truyền chuẩn `{ payload: ... }` để kích hoạt V1 Parser, né V2 Parser bị lỗi của Petra!
+    txn = await feature.signAndSubmitTransaction({ payload: v1TransactionPayload });
 
     // txn chứa hash hoặc transaction.hash
     const hash = txn?.hash || txn?.transaction?.hash || txn?.txnHash || 'pending';
