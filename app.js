@@ -672,11 +672,11 @@ async function connectWallet() {
 
     const reason = (err?.message || err?.code || '').toString().toLowerCase();
     if (reason.includes('reject') || reason.includes('denied') || reason.includes('cancel') || err?.code === 4001) {
-      showToast('⚠ Verification required on Petra wallet to continue.', 4500);
+      showToast('⚠ Vui lòng mở Extension Petra và chọn mạng Aptos Testnet.', 5000);
     } else if (reason.includes('already') || reason.includes('pending')) {
-      showToast('⚠ A connection request is already pending. Check your Petra pop-up.', 4000);
+      showToast('⚠ Đang có yêu cầu kết nối. Vui lòng kiểm tra pop-up Petra.', 4500);
     } else {
-      showToast('✗ Petra connection failed: ' + (err?.message?.slice(0, 60) || 'Unknown error'), 4500);
+      showToast('⚠ Vui lòng mở Extension Petra và chọn mạng Aptos Testnet.', 5000);
     }
   }
 }
