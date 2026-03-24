@@ -639,19 +639,30 @@ function getPetraProvider() {
 }
 
 async function connectWallet() {
-  const provider = getPetraProvider();
+  // ── DEBUG: kiểm tra trạng thái thật của window injection ──
+  console.log('[Petra Debug] window.aptos  =', window.aptos);
+  console.log('[Petra Debug] window.petra  =', window.petra);
+  console.log('[Petra Debug] URL protocol  =', location.protocol);
+
+  // Thử window.aptos trước, rồi window.petra
+  const provider = window.aptos || window.petra || null;
 
   if (!provider) {
-    // Distinguish: non-Petra wallet detected vs. no wallet at all
-    if (typeof window !== 'undefined' && window.aptos && !window.aptos.isPetra) {
-      showToast('⚠ Phát hiện ví khác. Chỉ dùng Petra Wallet: petra.app', 5500);
+    // Nếu là file:// → Petra extension không inject vào file:// theo mặc định
+    if (location.protocol === 'file:') {
+      showToast(
+        '⚠ Trang đang chạy từ file://\n' +
+        'Petra Extension không hoạt động với file://\n' +
+        '✅ Hãy mở trang qua http:// hoặc GitHub Pages.',
+        9000
+      );
     } else {
       showToast(
-        '⚠ Không tìm thấy Petra Wallet.\n' +
-        '📱 Android/Mises: play.google.com/store/apps/details?id=com.nemo.petra.wallet\n' +
-        '🍎 iOS: apps.apple.com/us/app/petra-aptos-wallet/id6443583416\n' +
-        '💻 PC: petra.app',
-        8000
+        '⚠ Không nhận được window.aptos từ Petra.\n' +
+        '1. Nhấn vào icon Petra trên toolbar\n' +
+        '2. Chọn "Connect" / "Kết nối" cho trang này\n' +
+        '3. Sau đó bấm CONNECT WALLET lại.',
+        9000
       );
     }
     return;
