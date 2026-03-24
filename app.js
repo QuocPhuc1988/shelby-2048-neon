@@ -616,63 +616,82 @@ function throttledMove(dir) {
 }
 
 /* ═══════════════════════════════════════════════
-   PETRA WALLET
-   ▸ Tuyệt đối không dùng window.petra — chỉ window.aptos
-   ▸ PC Extension : window.aptos.isPetra === true
-   ▸ Petra Mobile : window.aptos.isPetra === true (Petra dApp browser)
-   ▸ Mises Browser: window.aptos.isPetra === true (qua Petra bridge)
+   PETRA WALLET — AIP-62 Wallet Standard
+   Petra v4+ không còn hỗ trợ window.aptos.connect() legacy.
+   Phải dùng: provider.features['aptos:connect'].connect()
+   Docs: https://aptos.dev/build/sdks/wallet-adapter/dapp
 ═══════════════════════════════════════════════ */
 
 /**
- * 1. window.aptos  — Petra Extension (mới) & Petra Mobile dApp browser
- * 2. window.petra  — Petra Extension (cũ, một số phiên bản)
- * 3. null          — không tìm thấy Petra
- *
- * ⚠ Bỏ điều kiện isPetra cứng nhắc: một số bản Petra không set flag này
- *   nhưng vẫn inject window.aptos và hoạt động đúng khi gọi .connect()
+ * Tìm Petra wallet qua AIP-62 hoặc legacy injection.
+ * Trả về { provider, connectFn, disconnectFn, signFn } hoặc null.
  */
-function getPetraProvider() {
+async function getPetraProvider() {
   if (typeof window === 'undefined') return null;
-  if (window.aptos) return window.aptos;   // Petra Extension / Petra Mobile
-  if (window.petra) return window.petra;   // Petra Extension (cũ)
+
+  // AIP-62: wallets đăng ký qua window.addEventListener('aptos:wallet-registered')
+  // và expose qua window.aptosWallets (hoặc injected trực tiếp)
+  const raw = window.aptos || window.petra || null;
+  if (!raw) return null;
+
+  // AIP-62 Features API (Petra v4+)
+  if (raw.features) {
+    const connectFn = raw.features['aptos:connect']?.connect?.bind(raw.features['aptos:connect']);
+    const disconnectFn = raw.features['aptos:disconnect']?.disconnect?.bind(raw.features['aptos:disconnect']);
+    const signFn = raw.features['aptos:signAndSubmitTransaction']
+      ?.signAndSubmitTransaction
+      ?.bind(raw.features['aptos:signAndSubmitTransaction']);
+    if (connectFn) {
+      console.log('[Petra] AIP-62 provider detected ✅');
+      return { raw, connectFn, disconnectFn, signFn, isAip62: true };
+    }
+  }
+
+  // Legacy API (Petra v3 và cũ hơn)
+  if (typeof raw.connect === 'function') {
+    console.log('[Petra] Legacy provider detected (v3-)');
+    return {
+      raw,
+      connectFn: () => raw.connect(),
+      disconnectFn: () => raw.disconnect?.(),
+      signFn: (payload) => raw.signAndSubmitTransaction(payload),
+      isAip62: false,
+    };
+  }
+
   return null;
 }
 
 async function connectWallet() {
-  // ── DEBUG: kiểm tra trạng thái thật của window injection ──
-  console.log('[Petra Debug] window.aptos  =', window.aptos);
-  console.log('[Petra Debug] window.petra  =', window.petra);
-  console.log('[Petra Debug] URL protocol  =', location.protocol);
+  $walletLbl.textContent = 'CONNECTING…';
 
-  // Thử window.aptos trước, rồi window.petra
-  const provider = window.aptos || window.petra || null;
+  const petra = await getPetraProvider();
 
-  if (!provider) {
-    // Nếu là file:// → Petra extension không inject vào file:// theo mặc định
-    if (location.protocol === 'file:') {
-      showToast(
-        '⚠ Trang đang chạy từ file://\n' +
-        'Petra Extension không hoạt động với file://\n' +
-        '✅ Hãy mở trang qua http:// hoặc GitHub Pages.',
-        9000
-      );
-    } else {
-      showToast(
-        '⚠ Không nhận được window.aptos từ Petra.\n' +
-        '1. Nhấn vào icon Petra trên toolbar\n' +
-        '2. Chọn "Connect" / "Kết nối" cho trang này\n' +
-        '3. Sau đó bấm CONNECT WALLET lại.',
-        9000
-      );
-    }
+  if (!petra) {
+    $walletLbl.textContent = 'CONNECT WALLET';
+    showToast(
+      '⚠ Không tìm thấy Petra Wallet.\n' +
+      '💻 PC: petra.app\n' +
+      '📱 Android: play.google.com/store/apps/details?id=com.nemo.petra.wallet\n' +
+      '🍎 iOS: apps.apple.com/us/app/petra-aptos-wallet/id6443583416',
+      8000
+    );
     return;
   }
 
   try {
-    // Gọi await provider.connect() — đúng với object Petra đã tìm thấy
-    const resp = await provider.connect();
-    walletAddress = resp?.address || resp?.account?.address || 'unknown';
+    // AIP-62 connect trả về { address, publicKey, ... }
+    const resp = await petra.connectFn();
+    console.log('[Petra] Connect response:', resp);
+
+    // AIP-62: resp.address | legacy: resp.address hoặc resp.account.address
+    walletAddress = resp?.address?.toString()
+      || resp?.account?.address?.toString()
+      || 'unknown';
     walletConnected = true;
+
+    // Lưu petra object để dùng khi signAndSubmit
+    window._petraCtx = petra;
 
     const short = walletAddress.length > 14
       ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4)
@@ -684,21 +703,21 @@ async function connectWallet() {
     console.error('[Petra] Connect error:', err);
     $walletLbl.textContent = 'CONNECT WALLET';
     walletConnected = false;
-
-    const reason = (err?.message || err?.code || '').toString().toLowerCase();
+    const reason = (err?.message || '').toString().toLowerCase();
     if (reason.includes('reject') || reason.includes('denied') || reason.includes('cancel') || err?.code === 4001) {
-      showToast('⚠ Vui lòng mở Extension Petra và chọn mạng Aptos Testnet.', 5000);
-    } else if (reason.includes('already') || reason.includes('pending')) {
-      showToast('⚠ Đang có yêu cầu kết nối. Vui lòng kiểm tra pop-up Petra.', 4500);
+      showToast('⚠ Kết nối bị từ chối. Vui lòng chấp nhận trong ví Petra.', 4500);
     } else {
-      showToast('⚠ Vui lòng mở Extension Petra và chọn mạng Aptos Testnet.', 5000);
+      showToast('✗ Lỗi kết nối Petra: ' + (err?.message?.slice(0, 80) || 'Unknown'), 5000);
     }
   }
 }
 
 async function disconnectWallet() {
-  const provider = getPetraProvider();
-  if (provider?.disconnect) { try { await provider.disconnect(); } catch (_) { } }
+  try {
+    const petra = window._petraCtx || await getPetraProvider();
+    if (petra?.disconnectFn) await petra.disconnectFn();
+  } catch (_) { }
+  window._petraCtx = null;
   walletAddress = null;
   walletConnected = false;
   $walletLbl.textContent = 'CONNECT WALLET';
@@ -767,8 +786,9 @@ async function syncToShelby() {
     return;
   }
 
-  const provider = getPetraProvider();
-  if (!provider) {
+  // Lấy petra context đã lưu sau khi connect, hoặc tạo mới
+  const petra = window._petraCtx || await getPetraProvider();
+  if (!petra) {
     showSyncStatus('error', '✗ Petra Wallet not found. Install Petra or use Mises.');
     return;
   }
@@ -782,14 +802,18 @@ async function syncToShelby() {
     }
   }
 
-  showSyncStatus('pending', '◈ Signing blob… Check Petra / Mises wallet.');
+  showSyncStatus('pending', '◈ Signing blob… Check Petra wallet.');
   $syncBtn.disabled = true;
 
   try {
     const payload = buildBlobPayload();
     console.log('[Shelby] Payload →', SHELBY_MODULE, payload);
 
-    const txn = await provider.signAndSubmitTransaction(payload);
+    // AIP-62: dùng signFn đã được bind sẵn; fallback legacy nếu cần
+    const petraCtx = window._petraCtx || await getPetraProvider();
+    const txn = petraCtx?.signFn
+      ? await petraCtx.signFn({ payload })
+      : await (window.aptos || window.petra).signAndSubmitTransaction(payload);
 
     const hash = txn?.hash || txn?.transaction?.hash || txn?.txnHash || 'pending';
     const shortHash = typeof hash === 'string' && hash.length > 16
