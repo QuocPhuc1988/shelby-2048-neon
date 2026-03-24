@@ -624,61 +624,86 @@ function throttledMove(dir) {
 }
 
 /* ═══════════════════════════════════════════════
-   PETRA WALLET — Pure Vanilla AIP-62
+   PETRA WALLET — Standard Wallet Discovery (AIP-62)
+   Tự động bắt ví thông qua chuẩn @wallet-standard/core
 ═══════════════════════════════════════════════ */
+
+let petraWallet = null;
+
+// Gắn lắng nghe để tóm cổ Petra ngay khi nó được tiêm vào trang
+(function initPetraDetector() {
+  const api = Object.freeze({
+    register: (...wallets) => {
+      wallets.forEach(w => {
+        if (w.name && w.name.toLowerCase().includes('petra')) {
+          console.log('[Petra] Captured via wallet-standard API! ✅');
+          petraWallet = w;
+        }
+      });
+      return () => { }; // return unregister function
+    }
+  });
+
+  try {
+    window.addEventListener('wallet-standard:register-wallet', (e) => {
+      if (e.detail) e.detail(api);
+    });
+  } catch (err) { }
+
+  try {
+    window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: api }));
+  } catch (err) { }
+})();
+
+async function getPetraProvider() {
+  if (petraWallet) return petraWallet;
+
+  // Chờ tối đa 2 giây (cho mobile/Mises load chậm)
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (petraWallet) return petraWallet;
+  }
+
+  // Fallback 1: window.aptosWallets
+  if (window.aptosWallets && Array.isArray(window.aptosWallets)) {
+    const w = window.aptosWallets.find(x => x.name?.toLowerCase().includes('petra'));
+    if (w) return w;
+  }
+
+  // Fallback 2: window.petra
+  if (window.petra) {
+    console.log('[Petra] Using fallback window.petra layer');
+    return {
+      name: 'Petra Fallback',
+      features: {
+        'aptos:connect': { connect: () => window.petra.connect() },
+        'aptos:disconnect': { disconnect: () => window.petra.disconnect() },
+        'aptos:signAndSubmitTransaction': { signAndSubmitTransaction: (p) => window.petra.signAndSubmitTransaction(p.payload) }
+      }
+    };
+  }
+
+  return null;
+}
 
 async function connectWallet() {
   $walletLbl.textContent = 'CONNECTING…';
 
   try {
-    // 1. Tìm ví Petra trong mảng AIP-62
-    let petraWallet = null;
-
-    // Quét mảng chuẩn window.aptosWallets do Petra tiêm vào
-    const findPetra = () => {
-      if (window.aptosWallets && Array.isArray(window.aptosWallets)) {
-        return window.aptosWallets.find(w => w.name?.toLowerCase().includes('petra'));
-      }
-      return null;
-    };
-
-    petraWallet = findPetra();
-
-    if (!petraWallet) {
-      // 2. Chờ tối đa 2 giây xem wallet có load chậm không (cho Mises)
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 100));
-        petraWallet = findPetra();
-        if (petraWallet) break;
-      }
-    }
-
-    if (!petraWallet && window.petra) {
-      // Fallback cho PC nếu aptosWallets bị lỗi nhưng window.petra vẫn tồn tại
-      console.log('[Petra] Using fallback window.petra wrapper');
-      petraWallet = {
-        name: 'Petra Fallback',
-        features: {
-          'aptos:connect': { connect: () => window.petra.connect() },
-          'aptos:disconnect': { disconnect: () => window.petra.disconnect() },
-          'aptos:signAndSubmitTransaction': { signAndSubmitTransaction: (p) => window.petra.signAndSubmitTransaction(p.payload) }
-        }
-      };
-    }
-
-    if (!petraWallet) {
+    const walletExt = await getPetraProvider();
+    if (!walletExt) {
       throw new Error('NOT_INSTALLED');
     }
 
     // GỌI KẾT NỐI THEO CHUẨN AIP-62
-    const connectFeature = petraWallet.features['aptos:connect'];
+    const connectFeature = walletExt.features['aptos:connect'];
     if (!connectFeature) throw new Error('AIP-62 Connect not supported');
 
     const response = await connectFeature.connect();
     console.log('[Petra] Connect response:', response);
 
     // Lưu lại object để dùng cho signAndSubmit
-    window._aip62Petra = petraWallet;
+    window._aip62Petra = walletExt;
 
     walletAddress = response.address || response.account?.address || 'unknown';
     walletConnected = true;
