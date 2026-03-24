@@ -38,29 +38,7 @@ export default function Home() {
   };
 
   const handleManualSubmit = async () => {
-    if (!connected || !account) {
-      alert("Please connect your wallet before syncing.");
-      return;
-    }
-
-    // 1. Better network check (Standard API)
-    const walletNetwork = (window as any).aptos?.network?.name || (window as any).petra?.network?.name || "Unknown";
-
-    if (walletNetwork && !walletNetwork.toLowerCase().includes('testnet')) {
-      alert(`Current network is ${walletNetwork.toUpperCase()}. Please switch to TESTNET on your wallet.`);
-      return;
-    }
-
-    // 2. ONLY sync if score is higher
-    if (score === 0) {
-      alert("Please play the game to get a score before syncing!");
-      return;
-    }
-
-    if (score <= bestScore && bestScore > 0) {
-      const confirmResult = confirm(`Your current score (${score}) is lower than your best record (${bestScore}). Sync anyway?`);
-      if (!confirmResult) return;
-    }
+    if (!connected || !account) return;
 
     setIsSubmittingTx(true);
     try {
@@ -75,17 +53,9 @@ export default function Home() {
         }
       );
       setLastTxHash(response.hash);
-      alert("Submission Successful! TX: " + response.hash);
+      console.log("Submission Successful! TX:", response.hash);
     } catch (e: any) {
       console.error("Manual submit failed", e);
-      const errorMsg = e.toString();
-      if (errorMsg.includes("rejected")) {
-        alert("Transaction was rejected by user.");
-      } else if (errorMsg.includes("sufficient funds")) {
-        alert("Insufficient funds for gas or storage fees. Please get some testnet APT.");
-      } else {
-        alert("Submission Failed. Please check your network or wallet.");
-      }
     } finally {
       setIsSubmittingTx(false);
     }
