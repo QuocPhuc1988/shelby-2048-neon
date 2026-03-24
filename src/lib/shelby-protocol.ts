@@ -1,15 +1,14 @@
 import { GameData } from "./shelby";
 
 /**
- * Shelby Protocol Implementation
- * Specifically aligned with the user's "Hand-holding" (Cầm tay chỉ việc) parameters:
- * 1. p1 (string): Name
- * 2. p2 (u64): Expiration in MICROSECONDS (16 digits)
- * 3. p3 (vector<u8>): Commitment (32 zero bytes for registration)
- * 4. p4 (u32): Chunkset quantity (default 1)
- * 5. p5 (u64): Data size in bytes
- * 6. p6 (u8): Payment Tier
- * 7. p7 (u8): Encoding
+ * Shelby Protocol Implementation - Storage Provider Verification Edition
+ * Aligned with: https://docs.shelby.xyz/protocol/architecture/smart-contracts
+ * 
+ * Flow:
+ * 1. Serialize Game State to bytes.
+ * 2. Calculate SHA-256 Commitment (p3).
+ * 3. Provide accurate Data Size (p5).
+ * 4. Submit to registered Shelby module.
  */
 
 export const SHELBY_ADDRESS = "0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a";
@@ -20,41 +19,54 @@ export async function submitGameTransaction(
     gameData: GameData
 ) {
     try {
-        // 1. Module name using BACKTICKS (Required by user)
+        console.log("[Shelby] Preparing Verifiable Blob for Storage Providers...");
+
+        // 1. Serialize Data (The "Blob")
+        const blobObject = {
+            score: gameData.score,
+            bestScore: gameData.bestScore,
+            grid: gameData.grid,
+            timestamp: gameData.timestamp,
+            player: accountAddress
+        };
+        const serializedBlob = new TextEncoder().encode(JSON.stringify(blobObject));
+
+        // 2. Cryptographic Blob Commitment (p3: vector<u8>)
+        // SHA-256 allows verification of chunk contents by storage providers.
+        const hashBuffer = await crypto.subtle.digest('SHA-256', serializedBlob);
+        const commitment = new Uint8Array(hashBuffer);
+
+        // 3. Expiration Time in MICROSECONDS (p2: u64 string)
+        const MICROSECONDS_PER_SECOND = 1000000;
+        const SECONDS_IN_7_DAYS = 7 * 24 * 60 * 60; // 7 days is safer/standard for tests
+        const expirationUs = (Math.floor(Date.now() / 1000) + SECONDS_IN_7_DAYS) * MICROSECONDS_PER_SECOND;
+
+        // 4. Module name using BACKTICKS
         const SHELBY_MODULE = `${SHELBY_ADDRESS}::blob_metadata::register_blob`;
 
-        // 2. Data Commitment - Use 32 Zero Bytes for simplified registration
-        // As per user: "Khi dùng CLI, ông có thể để chuỗi 32 bytes zero nếu chỉ muốn đăng ký vị trí."
-        const p3_zeros = new Uint8Array(32); // Automatically initialized to zeros
-
-        // 3. Expiration Time in MICROSECONDS (16 digits)
-        const MICROSECONDS_PER_SECOND = 1000000;
-        const SECONDS_IN_30_DAYS = 30 * 24 * 60 * 60;
-        const expirationUs = (Math.floor(Date.now() / 1000) + SECONDS_IN_30_DAYS) * MICROSECONDS_PER_SECOND;
-
-        // 4. Prepare arguments using Modern AIP-62 (Wallet Standard) format
+        // 5. Final Payload Construction (Modern AIP-62)
         const payload = {
             data: {
                 function: SHELBY_MODULE,
                 typeArguments: [],
                 functionArguments: [
-                    "2048_SHELBY_RECORD",                    // p1: Name (string)
+                    `2048_SCORE_${gameData.score}`,         // p1: Name (Generic string)
                     expirationUs.toString(),                // p2: Expiration (u64 string)
-                    Array.from(p3_zeros),                    // p3: Commitment (32 zero bytes)
+                    Array.from(commitment),                 // p3: Commitment (32-byte SHA-256)
                     1,                                      // p4: Chunkset Qty (u32)
-                    gameData.score.toString(),              // p5: File Size (u64 string)
+                    serializedBlob.length.toString(),       // p5: Data Size in bytes (u64 string)
                     0,                                      // p6: Payment Tier (u8)
                     0                                       // p7: Encoding (u8)
                 ],
             }
         };
 
-        console.log("[Shelby] Submitting Transaction (Aligned with CLI defaults):", payload);
+        console.log("[Shelby] Submitting Verifiable Transaction:", payload);
 
         const response = await signAndSubmitTransaction(payload);
         return response;
     } catch (error) {
-        console.error("[Shelby] Transaction Failed:", error);
+        console.error("[Shelby] Transaction Preparation/Submission Failed:", error);
         throw error;
     }
 }
