@@ -841,11 +841,19 @@ async function syncToShelby() {
 
     if (!window._aip62Petra) throw new Error('Ví chưa được kết nối');
 
-    // GỌI KÝ THEO CHUẨN AIP-62
-    const feature = window._aip62Petra.features['aptos:signAndSubmitTransaction'];
-    if (!feature) throw new Error('Ví không hỗ trợ signAndSubmitTransaction');
+    let txn;
+    const legacyProvider = window.petra || window.aptos;
 
-    const txn = await feature.signAndSubmitTransaction({ payload });
+    if (legacyProvider && typeof legacyProvider.signAndSubmitTransaction === 'function') {
+      console.log('[Shelby] Using legacy signAndSubmitTransaction with JSON payload');
+      txn = await legacyProvider.signAndSubmitTransaction(payload);
+    } else {
+      console.log('[Shelby] Using AIP-62 signAndSubmitTransaction');
+      const feature = window._aip62Petra.features['aptos:signAndSubmitTransaction'];
+      if (!feature) throw new Error('Ví không hỗ trợ signAndSubmitTransaction');
+      // Thử pass payload trực tiếp, dù AIP-62 thường đòi RawTransaction
+      txn = await feature.signAndSubmitTransaction(payload);
+    }
 
     // txn chứa hash hoặc transaction.hash
     const hash = txn?.hash || txn?.transaction?.hash || txn?.txnHash || 'pending';
