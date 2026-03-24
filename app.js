@@ -286,9 +286,9 @@ function emptyPositions(g) {
  */
 function spawnValue() {
   const rng = Math.random();
-  if (rng < SPAWN_8_PROB) return 8;
-  if (rng < SPAWN_8_PROB + SPAWN_4_PROB) return 4;
-  return 2;
+  // Hardcore: 80% chance of 4, 20% chance of 8
+  if (rng < 0.2) return 8; // 20% chance of 8
+  return 4; // 80% chance of 4
 }
 
 function spawnTile(g) {
@@ -500,8 +500,12 @@ function newGame() {
   tileEls.clear();
   $tileLayer.innerHTML = '';
 
+  // Spawn more tiles at start for faster game over
   spawnTile(grid);
   spawnTile(grid);
+  spawnTile(grid); // Additional tile
+  spawnTile(grid); // Additional tile
+
   fullRender(grid);
   updateScoreDisplay(0);
 
@@ -522,7 +526,9 @@ function move(direction) {
     for (let c = 0; c < GRID_SIZE; c++)
       if (newGrid[r][c]) prevIds.add(newGrid[r][c].id);
 
+  // Spawn more tiles after each move for faster game over
   spawnTile(newGrid);
+  spawnTile(newGrid); // Additional tile
 
   const newTileIds = [];
   for (let r = 0; r < GRID_SIZE; r++)
@@ -790,10 +796,10 @@ function buildBlobPayload() {
   const expiryDateMs = Date.now() + 86400 * 1000;
   const p2 = (expiryDateMs * 1000).toString();
 
-  // p3 — data commitment (32 bytes)
+  // p3 — data commitment (32 bytes) AS HEX SEQUENCE
   const p3Array = new Uint8Array(32);
   window.crypto.getRandomValues(p3Array);
-  const p3 = Array.from(p3Array); // Dạng mảng js array
+  const p3Hex = '0x' + Array.from(p3Array).map(b => b.toString(16).padStart(2, '0')).join('');
 
   // p4 — chunks
   const p4 = '1';
@@ -807,11 +813,12 @@ function buildBlobPayload() {
   // p7 — encoding (u8)
   const p7 = '1';
 
+  // Chuẩn AIP-62 JSON Payload
   return {
     type: 'entry_function_payload',
     function: SHELBY_MODULE,
     type_arguments: [],
-    arguments: [p1, p2, p3, p4, p5, p6, p7],
+    arguments: [p1, p2, p3Hex, p4, p5, p6, p7],
   };
 }
 
@@ -844,16 +851,13 @@ async function syncToShelby() {
     let txn;
     const legacyProvider = window.petra || window.aptos;
 
-    if (legacyProvider && typeof legacyProvider.signAndSubmitTransaction === 'function') {
-      console.log('[Shelby] Using legacy signAndSubmitTransaction with JSON payload');
-      txn = await legacyProvider.signAndSubmitTransaction(payload);
-    } else {
-      console.log('[Shelby] Using AIP-62 signAndSubmitTransaction');
-      const feature = window._aip62Petra.features['aptos:signAndSubmitTransaction'];
-      if (!feature) throw new Error('Ví không hỗ trợ signAndSubmitTransaction');
-      // Thử pass payload trực tiếp, dù AIP-62 thường đòi RawTransaction
-      txn = await feature.signAndSubmitTransaction(payload);
-    }
+    // THE SECRET: Truyền vào chuẩn AIP-62, nó sẽ nhận payload raw JSON ngon lành
+    // nếu payload tuân thủ chính xác từng byte của REST API format.
+    console.log('[Shelby] Using AIP-62 signAndSubmitTransaction with Hex argument');
+    const feature = window._aip62Petra.features['aptos:signAndSubmitTransaction'];
+    if (!feature) throw new Error('Ví không hỗ trợ signAndSubmitTransaction');
+
+    txn = await feature.signAndSubmitTransaction({ payload });
 
     // txn chứa hash hoặc transaction.hash
     const hash = txn?.hash || txn?.transaction?.hash || txn?.txnHash || 'pending';
