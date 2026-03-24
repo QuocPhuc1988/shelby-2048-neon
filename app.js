@@ -616,59 +616,30 @@ function throttledMove(dir) {
 }
 
 /* ═══════════════════════════════════════════════
-   PETRA WALLET — Universal Detection
-   ▸ PC  : Chrome/Brave extension → window.aptos.isPetra = true
-   ▸ Mobile: Petra dApp browser injects window.aptos
-             (isPetra may arrive after page load → async wait)
-   ▸ Rejects all other wallets (OKX, Pontem, etc.)
+   PETRA WALLET
+   ▸ Tuyệt đối không dùng window.petra — chỉ window.aptos
+   ▸ PC Extension : window.aptos.isPetra === true
+   ▸ Petra Mobile : window.aptos.isPetra === true (Petra dApp browser)
+   ▸ Mises Browser: window.aptos.isPetra === true (qua Petra bridge)
 ═══════════════════════════════════════════════ */
 
 /**
- * Waits up to `maxMs` for window.aptos to appear (handles late injection
- * inside Petra mobile dApp browser), then validates it is Petra.
- * Returns the provider or null.
+ * Trả về window.aptos nếu tồn tại VÀ có thuộc tính isPetra === true.
+ * Không chấp nhận bất kỳ ví nào khác (OKX, Pontem, v.v.).
  */
-async function getPetraProvider(maxMs = 1500) {
-  // Fast path: already injected
-  if (typeof window === 'undefined') return null;
-
-  if (window.aptos) {
-    // PC extension always has isPetra; mobile dApp browser may omit it
-    // but it is the only wallet available, so accept window.aptos directly.
-    if (window.aptos.isPetra || !window.aptos.isOKXWallet && !window.aptos.isPontem) {
-      return window.aptos;
-    }
-    return null; // definitely a non-Petra wallet
+function getPetraProvider() {
+  if (typeof window !== 'undefined' && window.aptos && window.aptos.isPetra) {
+    return window.aptos;
   }
-
-  // Slow path: wait for late injection (Petra mobile dApp browser)
-  return new Promise((resolve) => {
-    const deadline = Date.now() + maxMs;
-    const poll = setInterval(() => {
-      if (window.aptos) {
-        clearInterval(poll);
-        if (window.aptos.isPetra || !window.aptos.isOKXWallet && !window.aptos.isPontem) {
-          resolve(window.aptos);
-        } else {
-          resolve(null);
-        }
-      } else if (Date.now() >= deadline) {
-        clearInterval(poll);
-        resolve(null);
-      }
-    }, 80);
-  });
+  return null;
 }
 
 async function connectWallet() {
-  $walletLbl.textContent = 'DETECTING…';
-
-  const provider = await getPetraProvider();
+  const provider = getPetraProvider();
 
   if (!provider) {
-    $walletLbl.textContent = 'CONNECT WALLET';
-    // Give the user a targeted message
-    if (window.aptos && (window.aptos.isOKXWallet || window.aptos.isPontem)) {
+    // Distinguish: non-Petra wallet detected vs. no wallet at all
+    if (typeof window !== 'undefined' && window.aptos && !window.aptos.isPetra) {
       showToast('⚠ Phát hiện ví khác. Chỉ dùng Petra Wallet: petra.app', 5500);
     } else {
       showToast(
@@ -683,8 +654,8 @@ async function connectWallet() {
   }
 
   try {
-    $walletLbl.textContent = 'CONNECTING…';
-    const resp = await provider.connect();
+    // Gọi trực tiếp await window.aptos.connect() — chuẩn cho PC lẫn Mobile
+    const resp = await window.aptos.connect();
     walletAddress = resp?.address || resp?.account?.address || 'unknown';
     walletConnected = true;
 
@@ -711,8 +682,7 @@ async function connectWallet() {
 }
 
 async function disconnectWallet() {
-  const provider = await getPetraProvider(200);
-  if (provider?.disconnect) { try { await provider.disconnect(); } catch (_) { } }
+  if (window.aptos?.disconnect) { try { await window.aptos.disconnect(); } catch (_) { } }
   walletAddress = null;
   walletConnected = false;
   $walletLbl.textContent = 'CONNECT WALLET';
