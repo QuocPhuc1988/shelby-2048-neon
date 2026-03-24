@@ -624,45 +624,67 @@ function throttledMove(dir) {
 ═══════════════════════════════════════════════ */
 
 /**
- * Khám phá Petra theo chuẩn AIP-62:
- * 1. Gửi 'aptos:wallet-discovery-request' → ví tự announce
- * 2. Lắng nghe 'aptos:wallet-registered' để nhận wallet object
- * 3. Wallet object có features['aptos:connect'].connect()
- * Timeout 2 giây — nếu không tìm thấy trả null.
+ * Khám phá Petra cực kỳ robust (bắt mọi phiên bản Petra hiện đại):
+ * 1. Đọc mảng window.aptosWallets (nhiều ví AIP-62 tiêm thẳng vào đây)
+ * 2. Nghe sự kiện 'aptos:wallet-registered'
+ * 3. Nếu sau timeout vẫn không thấy, wrap lấy window.aptos (mobile fallback)
  */
-async function getPetraProvider(timeoutMs = 2000) {
+async function getPetraProvider(timeoutMs = 1500) {
   if (typeof window === 'undefined') return null;
 
   return new Promise((resolve) => {
-    const found = [];
+    let resolved = false;
 
-    function onRegistered(e) {
-      const w = e.detail;
-      if (!w) return;
-      console.log('[Petra] Wallet registered:', w.name, w);
-      found.push(w);
-      // Ưu tiên Petra, nhưng resolve ngay khi tìm được Petra
-      if (w.name === 'Petra' || w.name === 'petra') {
-        cleanup();
+    // Helper kiểm tra và resolve nếu là Petra
+    const checkAndResolve = (w, source) => {
+      if (!w || resolved) return false;
+      const isPetra = w.name?.toLowerCase().includes('petra') || (w.features && w.features['aptos:connect']);
+      if (isPetra) {
+        resolved = true;
+        console.log(`[Petra] AIP-62 wallet found via ${source} ✅`, w);
         resolve(w);
+        return true;
+      }
+      return false;
+    };
+
+    // 1. Quét ngay trong mảng window.aptosWallets (nếu đã có ví đăng ký sớm)
+    if (Array.isArray(window.aptosWallets)) {
+      for (const w of window.aptosWallets) {
+        if (checkAndResolve(w, 'aptosWallets array')) return;
       }
     }
 
-    function cleanup() {
-      window.removeEventListener('aptos:wallet-registered', onRegistered);
-    }
-
+    // 2. Lắng nghe event wallet-registered
+    const onRegistered = (e) => checkAndResolve(e.detail, 'event');
     window.addEventListener('aptos:wallet-registered', onRegistered);
 
-    // Yêu cầu các ví đã đăng ký announce lại
+    // Gửi yêu cầu các ví AIP-62 announce lại chính nó
     window.dispatchEvent(new Event('aptos:wallet-discovery-request'));
 
-    // Timeout: nếu không tìm thấy Petra → resolve null
+    // 3. Timeout & Fallback (trường hợp extension chậm hoặc là app mobile Mises)
     setTimeout(() => {
-      cleanup();
-      console.log('[Petra] Timeout — wallets found:', found.map(w => w.name));
-      // Fallback: nếu chỉ có 1 ví được tìm thấy, dùng nó
-      resolve(found.length === 1 ? found[0] : null);
+      if (resolved) return;
+      window.removeEventListener('aptos:wallet-registered', onRegistered);
+
+      console.log('[Petra] AIP-62 discovery timeout, trying fallback...');
+
+      const raw = window.aptos || window.petra;
+      if (raw && typeof raw.connect === 'function') {
+        // Wrapper biến raw object cũ thành dạng AIP-62 chuẩn để hàm callConnect chạy đúng
+        console.log('[Petra] Injecting legacy fallback wrapper');
+        resolve({
+          name: 'Petra Fallback',
+          features: {
+            'aptos:connect': { connect: () => raw.connect() },
+            'aptos:disconnect': { disconnect: () => raw.disconnect?.() },
+            'aptos:signAndSubmitTransaction': { signAndSubmitTransaction: (p) => raw.signAndSubmitTransaction(p.payload) }
+          }
+        });
+      } else {
+        console.log('[Petra] No wallet found globally');
+        resolve(null);
+      }
     }, timeoutMs);
   });
 }
@@ -737,6 +759,8 @@ async function connectWallet() {
     const reason = (err?.message || '').toString().toLowerCase();
     if (reason.includes('reject') || reason.includes('denied') || reason.includes('cancel') || err?.code === 4001) {
       showToast('⚠ Kết nối bị từ chối. Vui lòng chấp nhận trong ví Petra.', 4500);
+    } else if (reason.includes('deprecated')) {
+      showToast('⚠ Lỗi phiên bản cũ. Vui lòng ấn F5 hoặc Ctrl+F5 để tải lại trang!', 7000);
     } else {
       showToast('✗ Lỗi kết nối Petra: ' + (err?.message?.slice(0, 80) || 'Unknown'), 5000);
     }
