@@ -705,7 +705,16 @@ async function connectWallet() {
     // Lưu lại object để dùng cho signAndSubmit
     window._aip62Petra = walletExt;
 
-    walletAddress = response.address || response.account?.address || 'unknown';
+    // AIP-62 connect response format: { status: "Approved", args: { address, publicKey } }
+    let rawAddress = response?.args?.address || response?.address || response?.account?.address || 'unknown';
+
+    // Nếu nó là object AccountAddress của Aptos SDK, nó sẽ có hàm toString()
+    if (typeof rawAddress === 'object' && typeof rawAddress.toString === 'function') {
+      walletAddress = rawAddress.toString();
+    } else {
+      walletAddress = String(rawAddress);
+    }
+
     walletConnected = true;
 
     const short = walletAddress.length > 14
