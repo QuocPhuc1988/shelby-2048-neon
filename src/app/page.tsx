@@ -39,36 +39,26 @@ export default function Home() {
 
   const handleManualSubmit = async () => {
     if (!connected || !account) {
-      alert("Vui lòng kết nối ví Petra trước khi Sync.");
+      alert("Please connect your wallet before syncing.");
       return;
     }
 
-    // 1. More robust network check
-    let networkName = "";
-    try {
-      // Try Petra/Standard API
-      const petra = (window as any).petra || (window as any).aptos;
-      if (petra?.network) {
-        const net = await petra.network();
-        networkName = (typeof net === 'string' ? net : net.name || "").toLowerCase();
-      }
-    } catch (e) {
-      console.warn("Network check error", e);
-    }
+    // 1. Better network check (Standard API)
+    const walletNetwork = (window as any).aptos?.network?.name || (window as any).petra?.network?.name || "Unknown";
 
-    if (networkName && !networkName.includes('testnet')) {
-      alert(`Đang ở mạng ${networkName.toUpperCase()}. Vui lòng chuyển sang TESTNET trên ví Petra.`);
+    if (walletNetwork && !walletNetwork.toLowerCase().includes('testnet')) {
+      alert(`Current network is ${walletNetwork.toUpperCase()}. Please switch to TESTNET on your wallet.`);
       return;
     }
 
-    // 2. ONLY sync if score is higher (Requirement)
+    // 2. ONLY sync if score is higher
     if (score === 0) {
-      alert("Hãy bắt đầu chơi để có điểm trước khi Sync!");
+      alert("Please play the game to get a score before syncing!");
       return;
     }
 
     if (score <= bestScore && bestScore > 0) {
-      const confirmResult = confirm(`Điểm hiện tại (${score}) thấp hơn kỷ lục (${bestScore}). Bạn có chắc muốn gửi dữ liệu này không?`);
+      const confirmResult = confirm(`Your current score (${score}) is lower than your best record (${bestScore}). Sync anyway?`);
       if (!confirmResult) return;
     }
 
@@ -86,13 +76,15 @@ export default function Home() {
       );
       setLastTxHash(response.hash);
       alert("Submission Successful! TX: " + response.hash);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Manual submit failed", e);
-      // If error is reject, we don't need a scary alert
-      if (e.toString().includes("rejected")) {
-        alert("Giao dịch bị từ chối.");
+      const errorMsg = e.toString();
+      if (errorMsg.includes("rejected")) {
+        alert("Transaction was rejected by user.");
+      } else if (errorMsg.includes("sufficient funds")) {
+        alert("Insufficient funds for gas or storage fees. Please get some testnet APT.");
       } else {
-        alert("Submission Failed. Hãy kiểm tra kết nối mạng hoặc ví.");
+        alert("Submission Failed. Please check your network or wallet.");
       }
     } finally {
       setIsSubmittingTx(false);
@@ -100,6 +92,7 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // Keyboard support
     const handleKeyDown = (e: KeyboardEvent) => {
       const addr = isAuthenticated ? account?.address?.toString() : undefined;
       // Movement is now throttled by 400ms inside the store
@@ -109,14 +102,45 @@ export default function Home() {
       if (['ArrowRight', 'd', 'D'].includes(e.key)) move('right', addr);
     };
 
+    // Touch support (Mobile)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    };
+    const handleTouchEnd = (e: TouchEvent) => {
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const dx = touchEndX - touchStartX;
+      const dy = touchEndY - touchStartY;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      const addr = isAuthenticated ? account?.address?.toString() : undefined;
+      if (Math.max(absDx, absDy) > 30) { // Threshold for swipe
+        if (absDx > absDy) {
+          move(dx > 0 ? 'right' : 'left', addr);
+        } else {
+          move(dy > 0 ? 'down' : 'up', addr);
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('touchstart', handleTouchStart);
+    window.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
   }, [move, isAuthenticated, account]);
 
   if (!hasMounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#0d0d12] text-white flex flex-col items-center p-4 md:p-8 font-sans">
+    <main className="min-h-screen bg-[#0d0d12] text-white flex flex-col items-center p-4 md:p-8 font-sans overscroll-none touch-none">
       <div className="w-full max-w-[500px] flex flex-col gap-6">
 
         {/* Header Section */}
