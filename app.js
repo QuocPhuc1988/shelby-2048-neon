@@ -730,14 +730,15 @@ $walletBtn.addEventListener('click', () => {
      p7 encoding    : u8
 ═══════════════════════════════════════════════ */
 function buildBlobPayload() {
-  // p1 — blob name (unique per run)
-  const p1 = `Shelby_2048_Score_${score}`;
+  // p1 — blob name (unique per run, branded)
+  const p1 = `GiaPhat_2048_${score}`;
 
-  // p2 — expiration in microseconds (now + 24 h)
-  const p2 = (BigInt(Date.now()) * 1000n + 86400000000n).toString();
+  // p2 — expiration in microseconds: (now + 24 h) × 1000
+  const p2 = ((Date.now() + 86400000) * 1000).toString();
 
-  // p3 — data commitment: 32-byte zero vector (dummy)
-  const p3 = Array(32).fill('0x00');
+  // p3 — data commitment: random 32-byte vector
+  const p3 = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+    .map(b => '0x' + b.toString(16).padStart(2, '0'));
 
   // p4 — chunkset count (u32)
   const p4 = '1';
