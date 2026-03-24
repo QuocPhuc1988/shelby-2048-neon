@@ -32,15 +32,13 @@ export async function submitGameTransaction(
         const SECONDS_IN_30_DAYS = 30 * 24 * 60 * 60;
         const expirationUs = (Math.floor(Date.now() / 1000) + SECONDS_IN_30_DAYS) * MICROSECONDS_PER_SECOND;
 
-        const blobName = `2048_SHELBY_${Date.now()}`;
-
         // 4. Prepare arguments using Modern AIP-62 (Wallet Standard) format
         const payload = {
             data: {
                 function: SHELBY_MODULE,
                 typeArguments: [],
                 functionArguments: [
-                    blobName,                               // p1: Name (Dynamic string)
+                    "2048_SHELBY_RECORD",                    // p1: Name (string)
                     expirationUs.toString(),                // p2: Expiration (u64 string)
                     Array.from(p3_zeros),                    // p3: Commitment (32 zero bytes)
                     1,                                      // p4: Chunkset Qty (u32)
