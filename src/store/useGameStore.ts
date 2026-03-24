@@ -16,6 +16,8 @@ type GameState = {
     gameWon: boolean;
     isSyncing: boolean;
     isMoving: boolean;
+    isShaking: boolean;
+    moveCount: number;
     initGame: () => void;
     move: (direction: 'up' | 'down' | 'left' | 'right', address?: string) => void;
     loadFromShelby: (address: string) => Promise<void>;
@@ -36,11 +38,13 @@ export const useGameStore = create<GameState>()(
             gameWon: false,
             isSyncing: false,
             isMoving: false,
+            isShaking: false,
+            moveCount: 0,
 
             initGame: () => {
                 let newGrid = createEmptyGrid();
                 newGrid = spawnTile(spawnTile(newGrid));
-                set({ grid: newGrid, score: 0, gameOver: false, gameWon: false, isMoving: false });
+                set({ grid: newGrid, score: 0, gameOver: false, gameWon: false, isMoving: false, moveCount: 0, isShaking: false });
             },
 
             loadFromShelby: async (address: string) => {
@@ -61,14 +65,20 @@ export const useGameStore = create<GameState>()(
             },
 
             move: async (direction, address) => {
-                const { grid, score, bestScore, gameOver, isMoving } = get();
+                const { grid, score, bestScore, gameOver, isMoving, moveCount } = get();
                 if (gameOver || isMoving) return;
 
-                const { newGrid, newScore, moved } = moveGrid(grid, direction);
+                const { newGrid, newScore, moved, maxMerged } = moveGrid(grid, direction);
 
                 if (moved) {
-                    // Lock movement to prevent "too fast" sensitivity (User requirement)
                     set({ isMoving: true });
+                    const newMoveCount = moveCount + 1;
+
+                    // Trigger Shake for high value merges (>= 1024)
+                    if (maxMerged >= 1024) {
+                        set({ isShaking: true });
+                        setTimeout(() => set({ isShaking: false }), 400);
+                    }
 
                     const gridWithSpawn = spawnTile(newGrid);
                     const isGameOver = checkGameOver(gridWithSpawn);
@@ -80,13 +90,14 @@ export const useGameStore = create<GameState>()(
                         score: updatedScore,
                         bestScore: updatedBest,
                         gameOver: isGameOver,
+                        moveCount: newMoveCount
                     });
 
-                    // Release lock after animation delay (400ms for stability and sync)
+                    // Match 350ms transition + overhead
                     setTimeout(() => set({ isMoving: false }), 400);
 
-                    // Background Sync
-                    if (address) {
+                    // Batch Sync: Every 5 moves OR Game Over
+                    if (address && (newMoveCount % 5 === 0 || isGameOver)) {
                         try {
                             const { ShelbyService } = await import('@/lib/shelby');
                             set({ isSyncing: true });
@@ -128,9 +139,16 @@ function spawnTile(grid: (Tile | null)[][]): (Tile | null)[][] {
 
     const [r, c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
     const newGrid = grid.map(row => [...row]);
+
+    // Hardcore Probabilities: 4 (25%), 8 (5%), 2 (70%)
+    const rand = Math.random();
+    let value = 2;
+    if (rand < 0.05) value = 8;
+    else if (rand < 0.30) value = 4; // 0.05 to 0.30 is 25%
+
     newGrid[r][c] = {
         id: Date.now() + nextId++,
-        value: Math.random() < 0.9 ? 2 : 4,
+        value,
         position: [r, c],
     };
 
@@ -141,6 +159,7 @@ function moveGrid(grid: (Tile | null)[][], direction: string) {
     let newGrid = grid.map(row => [...row]);
     let moved = false;
     let newScore = 0;
+    let maxMerged = 0;
 
     const rotations: Record<string, number> = { up: 1, right: 2, down: 3, left: 0 };
     const numRotations = rotations[direction] || 0;
@@ -154,6 +173,7 @@ function moveGrid(grid: (Tile | null)[][], direction: string) {
         for (let c = 0; c < row.length; c++) {
             if (c < row.length - 1 && row[c].value === row[c + 1].value) {
                 const combinedValue = row[c].value * 2;
+                maxMerged = Math.max(maxMerged, combinedValue);
                 newRow.push({
                     id: Date.now() + nextId++,
                     value: combinedValue,
@@ -181,7 +201,7 @@ function moveGrid(grid: (Tile | null)[][], direction: string) {
         }
     }
 
-    return { newGrid, newScore, moved };
+    return { newGrid, newScore, moved, maxMerged };
 }
 
 function rotateGrid(grid: (Tile | null)[][]) {

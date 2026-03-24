@@ -4,23 +4,24 @@ import React, { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import GameBoard from '@/components/GameBoard';
 import WalletSelector from '@/components/WalletSelector';
-import { Trophy, RefreshCw, Zap, ShieldCheck, Send } from 'lucide-react';
+import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink } from 'lucide-react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
-import { submitGameTransaction } from '@/lib/shelby-protocol';
+import { submitGameTransaction, fetchLeaderboard } from '@/lib/shelby-protocol';
 
 export default function Home() {
-  const { grid, score, bestScore, initGame, move, gameOver, isSyncing, loadFromShelby } = useGameStore();
-  const { connected, account, signMessage, signAndSubmitTransaction } = useWallet();
+  const { grid, score, bestScore, initGame, move, gameOver, isSyncing, isShaking, loadFromShelby } = useGameStore();
+  const { connected, account, signAndSubmitTransaction } = useWallet();
   const [hasMounted, setHasMounted] = useState(false);
   const [isSubmittingTx, setIsSubmittingTx] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+  const [showRanking, setShowRanking] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
 
   useEffect(() => {
     setHasMounted(true);
     initGame();
   }, [initGame]);
 
-  // Load record when wallet connects
   useEffect(() => {
     if (connected && account?.address) {
       loadFromShelby(account.address.toString());
@@ -29,7 +30,6 @@ export default function Home() {
 
   const handleManualSubmit = async () => {
     if (!connected || !account) return;
-
     setIsSubmittingTx(true);
     try {
       const response = await submitGameTransaction(
@@ -43,7 +43,6 @@ export default function Home() {
         }
       );
       setLastTxHash(response.hash);
-      console.log("Submission Successful! TX:", response.hash);
     } catch (e: any) {
       console.error("Manual submit failed", e);
     } finally {
@@ -51,56 +50,29 @@ export default function Home() {
     }
   };
 
+  const openRanking = async () => {
+    setShowRanking(true);
+    const data = await fetchLeaderboard();
+    setLeaderboard(data);
+  };
+
   useEffect(() => {
-    // Keyboard support
     const handleKeyDown = (e: KeyboardEvent) => {
       const addr = account?.address?.toString();
-      // Movement is now throttled by 400ms inside the store
       if (['ArrowUp', 'w', 'W'].includes(e.key)) move('up', addr);
       if (['ArrowDown', 's', 'S'].includes(e.key)) move('down', addr);
       if (['ArrowLeft', 'a', 'A'].includes(e.key)) move('left', addr);
       if (['ArrowRight', 'd', 'D'].includes(e.key)) move('right', addr);
     };
 
-    // Touch support (Mobile)
-    let touchStartX = 0;
-    let touchStartY = 0;
-    const handleTouchStart = (e: TouchEvent) => {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-    };
-    const handleTouchEnd = (e: TouchEvent) => {
-      const touchEndX = e.changedTouches[0].clientX;
-      const touchEndY = e.changedTouches[0].clientY;
-      const dx = touchEndX - touchStartX;
-      const dy = touchEndY - touchStartY;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-
-      const addr = account?.address?.toString();
-      if (Math.max(absDx, absDy) > 30) { // Threshold for swipe
-        if (absDx > absDy) {
-          move(dx > 0 ? 'right' : 'left', addr);
-        } else {
-          move(dy > 0 ? 'down' : 'up', addr);
-        }
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('touchstart', handleTouchStart);
-    window.addEventListener('touchend', handleTouchEnd);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [move, connected, account]);
 
   if (!hasMounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#0d0d12] text-white flex flex-col items-center p-4 md:p-8 font-sans overscroll-none touch-none">
+    <main className={`min-h-screen bg-[#0d0d12] text-white flex flex-col items-center p-4 md:p-8 font-sans overscroll-none touch-none transition-all ${isShaking ? 'shake-active' : ''}`}>
       <div className="w-full max-w-[500px] flex flex-col gap-6">
 
         {/* Header Section */}
@@ -113,38 +85,41 @@ export default function Home() {
               SHELBY BY GIAPHAT SDZ
             </p>
           </div>
-
           <WalletSelector />
         </div>
 
         {/* Action Controls */}
         <div className="flex justify-between items-center bg-[#1a1a24]/50 p-2 rounded-2xl border border-white/5">
-          <button
-            onClick={() => initGame()}
-            className="flex items-center gap-2 px-6 py-3 bg-[#1a1a24] hover:bg-[#252533] transition-all rounded-xl border border-white/10 group active:scale-95"
-          >
-            <RefreshCw size={18} className="text-[#ff2a75] group-hover:rotate-180 transition-transform duration-500" />
-            <span className="font-bold text-sm tracking-wide">New Game</span>
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => initGame()}
+              className="px-4 py-3 bg-[#1a1a24] hover:bg-[#252533] transition-all rounded-xl border border-white/10 group active:scale-95"
+            >
+              <RefreshCw size={18} className="text-[#ff2a75] group-hover:rotate-180 transition-transform duration-500" />
+            </button>
+            <button
+              onClick={openRanking}
+              className="px-4 py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 transition-all rounded-xl border border-indigo-500/20 active:scale-95 flex items-center gap-2"
+            >
+              <Globe size={18} />
+              <span className="font-bold text-xs uppercase">Ranking</span>
+            </button>
+          </div>
 
           <div className="flex gap-2">
             {connected && (
               <button
                 onClick={handleManualSubmit}
-                disabled={isSubmittingTx} // DISABLED directly after click (Requirement 3)
-                className="flex items-center gap-2 px-4 py-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-all rounded-xl border border-cyan-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSubmittingTx}
+                className="flex items-center gap-2 px-4 py-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-all rounded-xl border border-cyan-500/20 active:scale-95 disabled:opacity-50"
               >
                 {isSubmittingTx ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
-                <span className="font-bold text-xs uppercase tracking-wider">{isSubmittingTx ? 'Processing...' : 'Finish & Submit'}</span>
+                <span className="font-bold text-xs uppercase">{isSubmittingTx ? 'Syncing...' : 'Sync Now'}</span>
               </button>
             )}
 
             <div className={`px-4 py-2 rounded-lg flex items-center gap-2 border transition-colors ${isSyncing ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400' : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
-              {isSyncing ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Zap size={14} className="fill-current" />
-              )}
+              {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} className="fill-current" />}
               <span className="text-[11px] font-bold uppercase tracking-tight">{isSyncing ? 'Syncing...' : 'Live'}</span>
             </div>
           </div>
@@ -164,16 +139,14 @@ export default function Home() {
           </div>
         </div>
 
-
         {/* Game Board */}
         <div className="relative w-full">
           <GameBoard />
-
           {gameOver && (
-            <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl rounded-2xl flex flex-col items-center justify-center p-8 text-center border-2 border-[#ff2a75]/50">
-              <Trophy size={80} className="text-[#ff2a75] mb-4 animate-pulse drop-shadow-[0_0_20px_rgba(255,42,117,1)]" />
-              <h2 className="text-5xl font-black mb-2 tracking-tighter text-white">LEVEL END</h2>
-              <p className="text-gray-400 mb-8 max-w-[300px] text-sm font-bold uppercase tracking-tight">Successfully scored! Sync your achievement to Shelby Protocol now.</p>
+            <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl rounded-2xl flex flex-col items-center justify-center p-8 text-center border-2 border-[#ff2a75]/50 overflow-auto">
+              <Trophy size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
+              <h2 className="text-5xl font-black mb-2 tracking-tighter text-white uppercase italic">Hardcore End</h2>
+              <p className="text-gray-400 mb-8 max-w-[300px] text-sm font-bold uppercase">Game Over on Shelbynet. Register your rank now.</p>
 
               <div className="flex flex-col gap-3 w-full max-w-[280px]">
                 <button
@@ -182,37 +155,76 @@ export default function Home() {
                   className="w-full py-5 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_40px_rgba(255,42,117,0.6)] transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                 >
                   {isSubmittingTx ? <RefreshCw size={24} className="animate-spin" /> : <Send size={24} />}
-                  SUBMIT TO SHELBY
+                  SYNC TO SHELBY
                 </button>
+                {lastTxHash && (
+                  <a
+                    href={`https://explorer.shelby.xyz/transaction/${lastTxHash}`}
+                    target="_blank"
+                    className="w-full py-4 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 font-black rounded-xl border border-cyan-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
+                  >
+                    <ExternalLink size={14} />
+                    View on Explorer
+                  </a>
+                )}
                 <button
                   onClick={() => initGame()}
-                  className="w-full py-4 bg-white/5 hover:bg-white/10 text-white/80 font-black rounded-xl transition-all uppercase tracking-widest text-xs"
+                  className="w-full py-4 bg-white/5 hover:bg-white/10 text-white/50 font-bold rounded-xl text-xs uppercase tracking-widest"
                 >
-                  PLAY AGAIN
+                  Play Again
                 </button>
               </div>
-
-              {lastTxHash && (
-                <a
-                  href={`https://explorer.shelby.xyz/testnet/txn/${lastTxHash}`}
-                  target="_blank"
-                  className="mt-6 text-[10px] text-cyan-400 font-bold underline uppercase tracking-widest opacity-80 hover:opacity-100"
-                >
-                  View on Shelby Explorer
-                </a>
-              )}
             </div>
           )}
         </div>
 
-        {/* Footer Credit */}
+        {/* Global Ranking Modal */}
+        {showRanking && (
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-[#16161f] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-2xl relative flex flex-col max-h-[80vh]">
+              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#1a1a24] rounded-t-3xl">
+                <div className="flex items-center gap-2">
+                  <Globe className="text-indigo-400" />
+                  <h3 className="font-black text-xl uppercase tracking-tighter">Global Ranking</h3>
+                </div>
+                <button onClick={() => setShowRanking(false)} className="p-2 hover:bg-white/5 rounded-full text-white/40 hover:text-white">
+                  <X />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                <div className="flex flex-col gap-2">
+                  {leaderboard.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center p-4 bg-[#1a1a24] rounded-2xl border border-white/5 hover:border-indigo-500/30 transition-all group">
+                      <div className="flex items-center gap-4">
+                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-black ${i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-amber-700 text-white' : 'bg-white/5 text-gray-500'}`}>
+                          {i + 1}
+                        </span>
+                        <div className="flex flex-col">
+                          <span className="font-black text-sm text-gray-200 group-hover:text-indigo-400 transition-colors uppercase">{item.name}</span>
+                          <span className="text-[10px] text-gray-500 font-mono tracking-tighter">{item.address}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="font-black text-indigo-400">{item.score.toLocaleString()}</span>
+                        <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">Points</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="p-4 bg-[#1a1a24] rounded-b-3xl border-t border-white/5 text-center">
+                <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest italic animate-pulse">Live from Shelbynet Testnet</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <footer className="text-center opacity-40 flex flex-col items-center gap-2 py-4">
           <div className="h-px w-24 bg-white/10" />
           <p className="text-[10px] font-black tracking-[0.3em] uppercase text-gray-500">
             Powered by <span className="text-[#ff2a75]">Shelby Protocol Layer</span>
           </p>
         </footer>
-
       </div>
     </main>
   );
