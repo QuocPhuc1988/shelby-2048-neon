@@ -624,13 +624,16 @@ function throttledMove(dir) {
 ═══════════════════════════════════════════════ */
 
 /**
- * Trả về window.aptos nếu tồn tại VÀ có thuộc tính isPetra === true.
- * Không chấp nhận bất kỳ ví nào khác (OKX, Pontem, v.v.).
+ * 1. window.aptos nếu isPetra === true  (chuẩn — PC extension & Petra Mobile)
+ * 2. window.petra nếu tồn tại           (Petra extension cũ / tránh xung đột ví)
+ * 3. null nếu không tìm thấy Petra
  */
 function getPetraProvider() {
-  if (typeof window !== 'undefined' && window.aptos && window.aptos.isPetra) {
-    return window.aptos;
-  }
+  if (typeof window === 'undefined') return null;
+  // Ưu tiên 1: window.aptos với isPetra flag
+  if (window.aptos && window.aptos.isPetra) return window.aptos;
+  // Ưu tiên 2: window.petra (một số phiên bản Petra extension cũ)
+  if (window.petra) return window.petra;
   return null;
 }
 
@@ -654,8 +657,8 @@ async function connectWallet() {
   }
 
   try {
-    // Gọi trực tiếp await window.aptos.connect() — chuẩn cho PC lẫn Mobile
-    const resp = await window.aptos.connect();
+    // Gọi await provider.connect() — đúng với object Petra đã tìm thấy
+    const resp = await provider.connect();
     walletAddress = resp?.address || resp?.account?.address || 'unknown';
     walletConnected = true;
 
@@ -682,7 +685,8 @@ async function connectWallet() {
 }
 
 async function disconnectWallet() {
-  if (window.aptos?.disconnect) { try { await window.aptos.disconnect(); } catch (_) { } }
+  const provider = getPetraProvider();
+  if (provider?.disconnect) { try { await provider.disconnect(); } catch (_) { } }
   walletAddress = null;
   walletConnected = false;
   $walletLbl.textContent = 'CONNECT WALLET';
