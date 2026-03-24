@@ -849,15 +849,30 @@ async function syncToShelby() {
     if (!window._aip62Petra) throw new Error('Ví chưa được kết nối');
 
     let txn;
-    const legacyProvider = window.petra || window.aptos;
 
-    // THE SECRET: Truyền vào chuẩn AIP-62, nó sẽ nhận payload raw JSON ngon lành
-    // nếu payload tuân thủ chính xác từng byte của REST API format.
-    console.log('[Shelby] Using AIP-62 signAndSubmitTransaction with Hex argument');
+    // THE SECRET: Sử dụng @aptos-labs/ts-sdk (đã bundle) để biên dịch JSON thành Bytecode 
+    // AnyRawTransaction chuẩn xác mà ví cài sẵn chuẩn AIP-62 yêu cầu!
+    if (!window.aptosSDK) throw new Error('Aptos SDK Bundle chưa tải');
+
+    console.log('[Shelby] Compiling payload via TS-SDK...');
+    const { Aptos, AptosConfig, Network } = window.aptosSDK;
+    const config = new AptosConfig({ network: Network.TESTNET });
+    const aptos = new Aptos(config);
+
+    const transaction = await aptos.transaction.build.simple({
+      sender: walletAddress,
+      data: {
+        function: payload.function,
+        functionArguments: payload.arguments,
+        typeArguments: payload.type_arguments
+      }
+    });
+
+    console.log('[Shelby] Using AIP-62 signAndSubmitTransaction');
     const feature = window._aip62Petra.features['aptos:signAndSubmitTransaction'];
     if (!feature) throw new Error('Ví không hỗ trợ signAndSubmitTransaction');
 
-    txn = await feature.signAndSubmitTransaction({ payload });
+    txn = await feature.signAndSubmitTransaction({ transaction });
 
     // txn chứa hash hoặc transaction.hash
     const hash = txn?.hash || txn?.transaction?.hash || txn?.txnHash || 'pending';
