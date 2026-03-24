@@ -12,6 +12,7 @@ export default function Home() {
   const { grid, score, bestScore, initGame, move, gameOver, isSyncing, loadFromShelby } = useGameStore();
   const { connected, account, signMessage, signAndSubmitTransaction } = useWallet();
   const [hasMounted, setHasMounted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSubmittingTx, setIsSubmittingTx] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
@@ -20,12 +21,21 @@ export default function Home() {
     initGame();
   }, [initGame]);
 
-  // Load record when wallet connects
-  useEffect(() => {
-    if (connected && account?.address) {
-      loadFromShelby(account.address.toString());
+  const handleSignAuth = async () => {
+    if (!connected || !account) return;
+    try {
+      const message = `Authorize 2048 Shelby Sync for ${account.address}`;
+      const nonce = Date.now().toString();
+      await signMessage({
+        message,
+        nonce,
+      });
+      setIsAuthenticated(true);
+      await loadFromShelby(account.address.toString());
+    } catch (e) {
+      console.error("Auth failed", e);
     }
-  }, [connected, account, loadFromShelby]);
+  };
 
   const handleManualSubmit = async () => {
     if (!connected || !account) return;
@@ -54,7 +64,7 @@ export default function Home() {
   useEffect(() => {
     // Keyboard support
     const handleKeyDown = (e: KeyboardEvent) => {
-      const addr = account?.address?.toString();
+      const addr = isAuthenticated ? account?.address?.toString() : undefined;
       // Movement is now throttled by 400ms inside the store
       if (['ArrowUp', 'w', 'W'].includes(e.key)) move('up', addr);
       if (['ArrowDown', 's', 'S'].includes(e.key)) move('down', addr);
@@ -77,7 +87,7 @@ export default function Home() {
       const absDx = Math.abs(dx);
       const absDy = Math.abs(dy);
 
-      const addr = account?.address?.toString();
+      const addr = isAuthenticated ? account?.address?.toString() : undefined;
       if (Math.max(absDx, absDy) > 30) { // Threshold for swipe
         if (absDx > absDy) {
           move(dx > 0 ? 'right' : 'left', addr);
@@ -95,7 +105,7 @@ export default function Home() {
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [move, connected, account]);
+  }, [move, isAuthenticated, account]);
 
   if (!hasMounted) return null;
 
@@ -164,6 +174,24 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Authentication / Sync Alert */}
+        {connected && !isAuthenticated && (
+          <div className="bg-gradient-to-r from-orange-500/20 to-yellow-500/20 p-4 rounded-2xl border border-orange-500/30 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ShieldCheck size={20} className="text-orange-400" />
+              <div>
+                <p className="text-xs font-black uppercase tracking-tight text-white">Identity Check</p>
+                <p className="text-[10px] text-gray-400">Sign to enable Hot Storage</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSignAuth}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-bold rounded-lg uppercase tracking-widest transition-all"
+            >
+              Link Identity
+            </button>
+          </div>
+        )}
 
         {/* Game Board */}
         <div className="relative w-full">

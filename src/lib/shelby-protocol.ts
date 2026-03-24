@@ -1,12 +1,15 @@
 import { GameData } from "./shelby";
 
 /**
- * Shelby Protocol Implementation - Protocol-Perfect Edition
- * Aligned with: https://explorer.aptoslabs.com/txn/25492936/payload?network=shelbynet
- * 
- * FIX: 'The blob commitment length is invalid (must be exactly 32 bytes)'
- * Solution: p3 must be an ARRAY of 32 numbers (vector<u8>), NOT a hex string.
- * The explorer shows hex, but the wallet payload requires the raw byte array.
+ * Shelby Protocol Implementation
+ * Specifically aligned with the user's "Hand-holding" (Cầm tay chỉ việc) parameters:
+ * 1. p1 (string): Name
+ * 2. p2 (u64): Expiration in MICROSECONDS (16 digits)
+ * 3. p3 (vector<u8>): Commitment (32 zero bytes for registration)
+ * 4. p4 (u32): Chunkset quantity (default 1)
+ * 5. p5 (u64): Data size in bytes
+ * 6. p6 (u8): Payment Tier
+ * 7. p7 (u8): Encoding
  */
 
 export const SHELBY_ADDRESS = "0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a";
@@ -17,69 +20,38 @@ export async function submitGameTransaction(
     gameData: GameData
 ) {
     try {
-        console.log("[Shelby] Preparing Final Protocol-Perfect Payload...");
-
-        // 1. Serialize Data (The "Blob")
-        const blobObject = {
-            score: gameData.score,
-            bestScore: gameData.bestScore,
-            grid: gameData.grid,
-            timestamp: gameData.timestamp,
-            player: accountAddress
-        };
-        const serializedBlob = new TextEncoder().encode(JSON.stringify(blobObject));
-
-        // 2. Cryptographic Blob Commitment (p3: vector<u8> -> MUST BE ARRAY OF NUMBERS)
-        const hashBuffer = await crypto.subtle.digest('SHA-256', serializedBlob);
-        const commitmentArray = Array.from(new Uint8Array(hashBuffer));
-
-        if (commitmentArray.length !== 32) {
-            throw new Error(`Invalid commitment length: ${commitmentArray.length}. Expected 32.`);
-        }
-
-        // 3. Expiration Time (p2: u64 string, 16 digits)
-        const MICROSECONDS_PER_SECOND = 1000000;
-        const SECONDS_IN_7_DAYS = 7 * 24 * 60 * 60;
-        const expirationUs = (Math.floor(Date.now() / 1000) + SECONDS_IN_7_DAYS) * MICROSECONDS_PER_SECOND;
-
-        // 4. Module name
+        // 1. Module name using BACKTICKS (Required by user)
         const SHELBY_MODULE = `${SHELBY_ADDRESS}::blob_metadata::register_blob`;
 
-        // 5. Final Payload (Correct Types)
+        // 2. Data Commitment - Use 32 Zero Bytes for simplified registration
+        // As per user: "Khi dùng CLI, ông có thể để chuỗi 32 bytes zero nếu chỉ muốn đăng ký vị trí."
+        const p3_zeros = new Uint8Array(32); // Automatically initialized to zeros
+
+        // 3. Expiration Time in MICROSECONDS (16 digits)
+        const MICROSECONDS_PER_SECOND = 1000000;
+        const SECONDS_IN_30_DAYS = 30 * 24 * 60 * 60;
+        const expirationUs = (Math.floor(Date.now() / 1000) + SECONDS_IN_30_DAYS) * MICROSECONDS_PER_SECOND;
+
+        // 4. Prepare arguments using Modern AIP-62 (Wallet Standard) format
         const payload = {
             data: {
                 function: SHELBY_MODULE,
                 typeArguments: [],
                 functionArguments: [
-                    "2048_SHELBY_RECORD",                    // p1: Name (Generic string)
+                    "2048_SHELBY_RECORD",                    // p1: Name (string)
                     expirationUs.toString(),                // p2: Expiration (u64 string)
-                    commitmentArray,                        // p3: Commitment (ARRAY OF 32 NUMBERS)
-                    1,                                      // p4: Chunkset Qty (u32 number)
-                    serializedBlob.length.toString(),       // p5: File Size (u64 string)
-                    0,                                      // p6: Tier (u8 number)
-                    0                                       // p7: Encoding (u8 number)
+                    Array.from(p3_zeros),                    // p3: Commitment (32 zero bytes)
+                    1,                                      // p4: Chunkset Qty (u32)
+                    gameData.score.toString(),              // p5: File Size (u64 string)
+                    0,                                      // p6: Payment Tier (u8)
+                    0                                       // p7: Encoding (u8)
                 ],
             }
         };
 
-        console.log("[Shelby] Submitting Transaction (32-byte Array Format):", payload);
+        console.log("[Shelby] Submitting Transaction (Aligned with CLI defaults):", payload);
 
         const response = await signAndSubmitTransaction(payload);
-
-        // 6. Off-chain upload to Shelbynet RPC (PUT request)
-        try {
-            await fetch(`https://api.shelbynet.shelby.xyz/shelby/v1/blobs/${accountAddress}/${payload.data.functionArguments[0]}`, {
-                method: 'PUT',
-                body: serializedBlob,
-                headers: {
-                    'Content-Length': serializedBlob.length.toString()
-                }
-            });
-            console.log("[Shelby] Data successfully uploaded to Storage Providers.");
-        } catch (uploadError) {
-            console.warn("[Shelby] Off-chain upload failed, but on-chain registration succeeded.");
-        }
-
         return response;
     } catch (error) {
         console.error("[Shelby] Transaction Failed:", error);
