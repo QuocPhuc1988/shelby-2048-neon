@@ -616,51 +616,82 @@ function throttledMove(dir) {
 }
 
 /* ═══════════════════════════════════════════════
-   PETRA WALLET — AIP-62 Wallet Standard
-   Petra v4+ không còn hỗ trợ window.aptos.connect() legacy.
-   Phải dùng: provider.features['aptos:connect'].connect()
+   PETRA WALLET — AIP-62 Wallet Discovery Events
+   Petra v4 không còn dùng window.aptos.connect() legacy.
+   Wallet đăng ký qua sự kiện 'aptos:wallet-registered'.
+   dApp khám phá ví bằng 'aptos:wallet-discovery-request'.
    Docs: https://aptos.dev/build/sdks/wallet-adapter/dapp
 ═══════════════════════════════════════════════ */
 
 /**
- * Tìm Petra wallet qua AIP-62 hoặc legacy injection.
- * Trả về { provider, connectFn, disconnectFn, signFn } hoặc null.
+ * Khám phá Petra theo chuẩn AIP-62:
+ * 1. Gửi 'aptos:wallet-discovery-request' → ví tự announce
+ * 2. Lắng nghe 'aptos:wallet-registered' để nhận wallet object
+ * 3. Wallet object có features['aptos:connect'].connect()
+ * Timeout 2 giây — nếu không tìm thấy trả null.
  */
-async function getPetraProvider() {
+async function getPetraProvider(timeoutMs = 2000) {
   if (typeof window === 'undefined') return null;
 
-  // AIP-62: wallets đăng ký qua window.addEventListener('aptos:wallet-registered')
-  // và expose qua window.aptosWallets (hoặc injected trực tiếp)
-  const raw = window.aptos || window.petra || null;
-  if (!raw) return null;
+  return new Promise((resolve) => {
+    const found = [];
 
-  // AIP-62 Features API (Petra v4+)
-  if (raw.features) {
-    const connectFn = raw.features['aptos:connect']?.connect?.bind(raw.features['aptos:connect']);
-    const disconnectFn = raw.features['aptos:disconnect']?.disconnect?.bind(raw.features['aptos:disconnect']);
-    const signFn = raw.features['aptos:signAndSubmitTransaction']
-      ?.signAndSubmitTransaction
-      ?.bind(raw.features['aptos:signAndSubmitTransaction']);
-    if (connectFn) {
-      console.log('[Petra] AIP-62 provider detected ✅');
-      return { raw, connectFn, disconnectFn, signFn, isAip62: true };
+    function onRegistered(e) {
+      const w = e.detail;
+      if (!w) return;
+      console.log('[Petra] Wallet registered:', w.name, w);
+      found.push(w);
+      // Ưu tiên Petra, nhưng resolve ngay khi tìm được Petra
+      if (w.name === 'Petra' || w.name === 'petra') {
+        cleanup();
+        resolve(w);
+      }
     }
-  }
 
-  // Legacy API (Petra v3 và cũ hơn)
-  if (typeof raw.connect === 'function') {
-    console.log('[Petra] Legacy provider detected (v3-)');
-    return {
-      raw,
-      connectFn: () => raw.connect(),
-      disconnectFn: () => raw.disconnect?.(),
-      signFn: (payload) => raw.signAndSubmitTransaction(payload),
-      isAip62: false,
-    };
-  }
+    function cleanup() {
+      window.removeEventListener('aptos:wallet-registered', onRegistered);
+    }
 
-  return null;
+    window.addEventListener('aptos:wallet-registered', onRegistered);
+
+    // Yêu cầu các ví đã đăng ký announce lại
+    window.dispatchEvent(new Event('aptos:wallet-discovery-request'));
+
+    // Timeout: nếu không tìm thấy Petra → resolve null
+    setTimeout(() => {
+      cleanup();
+      console.log('[Petra] Timeout — wallets found:', found.map(w => w.name));
+      // Fallback: nếu chỉ có 1 ví được tìm thấy, dùng nó
+      resolve(found.length === 1 ? found[0] : null);
+    }, timeoutMs);
+  });
 }
+
+/**
+ * Gọi connect() theo AIP-62:
+ * wallet.features['aptos:connect'].connect()
+ */
+async function callConnect(wallet) {
+  const feature = wallet?.features?.['aptos:connect'];
+  if (feature?.connect) {
+    console.log('[Petra] Using AIP-62 connect ✅');
+    return await feature.connect();
+  }
+  throw new Error('Petra wallet does not support aptos:connect feature. Please update Petra extension.');
+}
+
+/**
+ * Gọi signAndSubmitTransaction() theo AIP-62
+ */
+async function callSignAndSubmit(wallet, payload) {
+  const feature = wallet?.features?.['aptos:signAndSubmitTransaction'];
+  if (feature?.signAndSubmitTransaction) {
+    console.log('[Petra] Using AIP-62 signAndSubmitTransaction ✅');
+    return await feature.signAndSubmitTransaction({ payload });
+  }
+  throw new Error('Petra wallet does not support aptos:signAndSubmitTransaction.');
+}
+
 
 async function connectWallet() {
   $walletLbl.textContent = 'CONNECTING…';
@@ -680,13 +711,13 @@ async function connectWallet() {
   }
 
   try {
-    // AIP-62 connect trả về { address, publicKey, ... }
-    const resp = await petra.connectFn();
+    // AIP-62: callConnect dùng wallet.features['aptos:connect'].connect()
+    const resp = await callConnect(petra);
     console.log('[Petra] Connect response:', resp);
 
-    // AIP-62: resp.address | legacy: resp.address hoặc resp.account.address
-    walletAddress = resp?.address?.toString()
-      || resp?.account?.address?.toString()
+    // AIP-62: resp.account.address | hoặc resp.address
+    walletAddress = resp?.account?.address?.toString()
+      || resp?.address?.toString()
       || 'unknown';
     walletConnected = true;
 
@@ -714,8 +745,9 @@ async function connectWallet() {
 
 async function disconnectWallet() {
   try {
-    const petra = window._petraCtx || await getPetraProvider();
-    if (petra?.disconnectFn) await petra.disconnectFn();
+    const wallet = window._petraCtx || await getPetraProvider(500);
+    const disconnFeature = wallet?.features?.['aptos:disconnect'];
+    if (disconnFeature?.disconnect) await disconnFeature.disconnect();
   } catch (_) { }
   window._petraCtx = null;
   walletAddress = null;
@@ -809,11 +841,9 @@ async function syncToShelby() {
     const payload = buildBlobPayload();
     console.log('[Shelby] Payload →', SHELBY_MODULE, payload);
 
-    // AIP-62: dùng signFn đã được bind sẵn; fallback legacy nếu cần
-    const petraCtx = window._petraCtx || await getPetraProvider();
-    const txn = petraCtx?.signFn
-      ? await petraCtx.signFn({ payload })
-      : await (window.aptos || window.petra).signAndSubmitTransaction(payload);
+    // AIP-62: callSignAndSubmit dùng wallet.features['aptos:signAndSubmitTransaction']
+    const wallet = window._petraCtx || await getPetraProvider(500);
+    const txn = await callSignAndSubmit(wallet, payload);
 
     const hash = txn?.hash || txn?.transaction?.hash || txn?.txnHash || 'pending';
     const shortHash = typeof hash === 'string' && hash.length > 16
