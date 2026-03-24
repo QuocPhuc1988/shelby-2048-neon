@@ -628,7 +628,7 @@ function throttledMove(dir) {
  * inside Petra mobile dApp browser), then validates it is Petra.
  * Returns the provider or null.
  */
-async function getPetraProvider(maxMs = 1000) {
+async function getPetraProvider(maxMs = 1500) {
   // Fast path: already injected
   if (typeof window === 'undefined') return null;
 
@@ -671,7 +671,7 @@ async function connectWallet() {
     if (window.aptos && (window.aptos.isOKXWallet || window.aptos.isPontem)) {
       showToast('⚠ Phát hiện ví khác (không phải Petra). Vui lòng cài & dùng Petra Wallet.', 5500);
     } else {
-      showToast('⚠ Không tìm thấy Petra Wallet.\nCài extension Petra (PC) hoặc mở trang trong Petra App (mobile).', 5000);
+      showToast('⚠ Không tìm thấy Petra Wallet. Cài extension tại petra.app (PC) hoặc mở trang trực tiếp trong Petra App (iOS/Android).', 6000);
     }
     return;
   }
