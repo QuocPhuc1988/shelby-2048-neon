@@ -616,27 +616,62 @@ function throttledMove(dir) {
 }
 
 /* ═══════════════════════════════════════════════
-   PETRA WALLET — Only window.aptos (isPetra)
-   Mises browser: must have Petra extension installed
+   PETRA WALLET — Universal Detection
+   ▸ PC  : Chrome/Brave extension → window.aptos.isPetra = true
+   ▸ Mobile: Petra dApp browser injects window.aptos
+             (isPetra may arrive after page load → async wait)
+   ▸ Rejects all other wallets (OKX, Pontem, etc.)
 ═══════════════════════════════════════════════ */
-function getPetraProvider() {
-  // Strictly require Petra: window.aptos must exist AND carry isPetra flag.
-  // This prevents accidentally using OKX, Pontem, or other injected providers.
-  if (typeof window !== 'undefined' && window.aptos && window.aptos.isPetra) {
-    return window.aptos;
+
+/**
+ * Waits up to `maxMs` for window.aptos to appear (handles late injection
+ * inside Petra mobile dApp browser), then validates it is Petra.
+ * Returns the provider or null.
+ */
+async function getPetraProvider(maxMs = 1000) {
+  // Fast path: already injected
+  if (typeof window === 'undefined') return null;
+
+  if (window.aptos) {
+    // PC extension always has isPetra; mobile dApp browser may omit it
+    // but it is the only wallet available, so accept window.aptos directly.
+    if (window.aptos.isPetra || !window.aptos.isOKXWallet && !window.aptos.isPontem) {
+      return window.aptos;
+    }
+    return null; // definitely a non-Petra wallet
   }
-  return null;
+
+  // Slow path: wait for late injection (Petra mobile dApp browser)
+  return new Promise((resolve) => {
+    const deadline = Date.now() + maxMs;
+    const poll = setInterval(() => {
+      if (window.aptos) {
+        clearInterval(poll);
+        if (window.aptos.isPetra || !window.aptos.isOKXWallet && !window.aptos.isPontem) {
+          resolve(window.aptos);
+        } else {
+          resolve(null);
+        }
+      } else if (Date.now() >= deadline) {
+        clearInterval(poll);
+        resolve(null);
+      }
+    }, 80);
+  });
 }
 
 async function connectWallet() {
-  const provider = getPetraProvider();
+  $walletLbl.textContent = 'DETECTING…';
+
+  const provider = await getPetraProvider();
 
   if (!provider) {
-    // Distinguish between no wallet at all vs. a non-Petra wallet injected
-    if (typeof window !== 'undefined' && window.aptos && !window.aptos.isPetra) {
-      showToast('⚠ Detected non-Petra wallet. Please install & use Petra Wallet only.', 5000);
+    $walletLbl.textContent = 'CONNECT WALLET';
+    // Give the user a targeted message
+    if (window.aptos && (window.aptos.isOKXWallet || window.aptos.isPontem)) {
+      showToast('⚠ Phát hiện ví khác (không phải Petra). Vui lòng cài & dùng Petra Wallet.', 5500);
     } else {
-      showToast('⚠ Petra Wallet not found. Install the Petra extension to continue.', 4500);
+      showToast('⚠ Không tìm thấy Petra Wallet.\nCài extension Petra (PC) hoặc mở trang trong Petra App (mobile).', 5000);
     }
     return;
   }
@@ -652,23 +687,25 @@ async function connectWallet() {
       : walletAddress;
     $walletLbl.textContent = short;
     $walletBtn.classList.add('connected');
-    showToast(`✓ Petra connected: ${short}`, 3000);
+    showToast(`✓ Petra đã kết nối: ${short}`, 3000);
   } catch (err) {
     console.error('[Petra] Connect error:', err);
     $walletLbl.textContent = 'CONNECT WALLET';
     walletConnected = false;
-    // Mises browser may reject the connection pop-up
-    const reason = err?.message || '';
-    if (reason.toLowerCase().includes('reject') || reason.toLowerCase().includes('denied') || reason.toLowerCase().includes('cancel')) {
-      showToast('✗ Kết nối bị từ chối. Vui lòng chấp nhận trong ví Petra.', 4000);
+
+    const reason = (err?.message || err?.code || '').toString().toLowerCase();
+    if (reason.includes('reject') || reason.includes('denied') || reason.includes('cancel') || err?.code === 4001) {
+      showToast('⚠ Vui lòng xác nhận kết nối trong ví Petra.', 4000);
+    } else if (reason.includes('already') || reason.includes('pending')) {
+      showToast('⚠ Đang có yêu cầu kết nối. Kiểm tra pop-up Petra.', 4000);
     } else {
-      showToast('✗ Không thể kết nối Petra: ' + (reason.slice(0, 60) || 'Unknown error'), 4000);
+      showToast('✗ Kết nối Petra thất bại: ' + (err?.message?.slice(0, 60) || 'Unknown error'), 4500);
     }
   }
 }
 
 async function disconnectWallet() {
-  const provider = getPetraProvider();
+  const provider = await getPetraProvider(200);
   if (provider?.disconnect) { try { await provider.disconnect(); } catch (_) { } }
   walletAddress = null;
   walletConnected = false;
