@@ -648,21 +648,29 @@ async function getPetraProvider(timeoutMs = 1500) {
       return false;
     };
 
-    // 1. Quét ngay trong mảng window.aptosWallets (nếu đã có ví đăng ký sớm)
+    // 1. Quét ngay trên window objects (Petra v4 tiêm thẳng vào window.petra dưới dạng AIP-62)
+    const injected = [window.petra, window.aptos];
+    for (const w of injected) {
+      if (w && w.features && w.features['aptos:connect']) {
+        if (checkAndResolve(w, 'window object')) return;
+      }
+    }
+
+    // 2. Quét trong mảng window.aptosWallets (nếu đã có ví đăng ký sớm)
     if (Array.isArray(window.aptosWallets)) {
       for (const w of window.aptosWallets) {
         if (checkAndResolve(w, 'aptosWallets array')) return;
       }
     }
 
-    // 2. Lắng nghe event wallet-registered
+    // 3. Lắng nghe event wallet-registered
     const onRegistered = (e) => checkAndResolve(e.detail, 'event');
     window.addEventListener('aptos:wallet-registered', onRegistered);
 
     // Gửi yêu cầu các ví AIP-62 announce lại chính nó
     window.dispatchEvent(new Event('aptos:wallet-discovery-request'));
 
-    // 3. Timeout & Fallback (trường hợp extension chậm hoặc là app mobile Mises)
+    // 4. Timeout & Fallback (trường hợp extension chậm hoặc là app mobile Mises)
     setTimeout(() => {
       if (resolved) return;
       window.removeEventListener('aptos:wallet-registered', onRegistered);
@@ -672,19 +680,23 @@ async function getPetraProvider(timeoutMs = 1500) {
       const raw = window.aptos || window.petra;
       if (raw && typeof raw.connect === 'function') {
         // Wrapper biến raw object cũ thành dạng AIP-62 chuẩn để hàm callConnect chạy đúng
-        console.log('[Petra] Injecting legacy fallback wrapper');
-        resolve({
-          name: 'Petra Fallback',
-          features: {
-            'aptos:connect': { connect: () => raw.connect() },
-            'aptos:disconnect': { disconnect: () => raw.disconnect?.() },
-            'aptos:signAndSubmitTransaction': { signAndSubmitTransaction: (p) => raw.signAndSubmitTransaction(p.payload) }
-          }
-        });
-      } else {
-        console.log('[Petra] No wallet found globally');
-        resolve(null);
+        // LƯU Ý: Nếu nó THỰC SỰ đã có features thì không wrap
+        if (!raw.features) {
+          console.log('[Petra] Injecting legacy fallback wrapper');
+          resolve({
+            name: 'Petra Fallback',
+            features: {
+              'aptos:connect': { connect: () => raw.connect() },
+              'aptos:disconnect': { disconnect: () => raw.disconnect?.() },
+              'aptos:signAndSubmitTransaction': { signAndSubmitTransaction: (p) => raw.signAndSubmitTransaction(p.payload) }
+            }
+          });
+          return;
+        }
       }
+
+      console.log('[Petra] No wallet found globally');
+      resolve(null);
     }, timeoutMs);
   });
 }
