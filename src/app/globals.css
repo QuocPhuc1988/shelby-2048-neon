@@ -3,10 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --background: #0d0d12;
+  --background: #060608;
   --foreground: #ffffff;
-  --transition-ms: 350ms;
-  /* Hardcore Strategy Speed */
+  --transition-ms: 200ms;
+  /* Speedrun Engine Speed */
+  --grid-gap: 12px;
 }
 
 body {
@@ -16,19 +17,31 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom animations for 2048 Shelby */
-@keyframes glow {
-
-  0%,
-  100% {
-    box-shadow: 0 0 15px rgba(255, 42, 117, 0.4);
-  }
-
-  50% {
-    box-shadow: 0 0 35px rgba(255, 42, 117, 0.7);
-  }
+/* Speedrun Grid Engine Styles */
+.speedrun-grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: var(--grid-gap);
+  padding: var(--grid-gap);
+  position: relative;
+  background: #111116;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.tile-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: var(--grid-gap);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Animations */
 @keyframes shake {
 
   0%,
@@ -36,28 +49,21 @@ body {
     transform: translate(0, 0);
   }
 
-  10%,
-  30%,
-  50%,
-  70%,
-  90% {
-    transform: translate(-4px, -4px);
+  25% {
+    transform: translate(-2px, -2px);
   }
 
-  20%,
-  40%,
-  60%,
-  80% {
-    transform: translate(4px, 4px);
+  75% {
+    transform: translate(2px, 2px);
   }
-}
-
-.animate-glow {
-  animation: glow 2s ease-in-out infinite;
 }
 
 .shake-active {
-  animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+  animation: shake 0.2s ease-in-out;
+}
+
+.glow-record {
+  box-shadow: 0 0 30px rgba(255, 42, 117, 0.4);
 }
 
 @layer utilities {

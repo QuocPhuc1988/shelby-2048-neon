@@ -5,7 +5,6 @@ type Tile = {
     id: number;
     value: number;
     position: [number, number];
-    mergedFrom?: [Tile, Tile];
 };
 
 type GameState = {
@@ -17,7 +16,8 @@ type GameState = {
     isSyncing: boolean;
     isMoving: boolean;
     isShaking: boolean;
-    moveCount: number;
+    startTime: number | null;
+    endTime: number | null;
     initGame: () => void;
     move: (direction: 'up' | 'down' | 'left' | 'right', address?: string) => void;
     loadFromShelby: (address: string) => Promise<void>;
@@ -39,12 +39,22 @@ export const useGameStore = create<GameState>()(
             isSyncing: false,
             isMoving: false,
             isShaking: false,
-            moveCount: 0,
+            startTime: null,
+            endTime: null,
 
             initGame: () => {
                 let newGrid = createEmptyGrid();
                 newGrid = spawnTile(spawnTile(newGrid));
-                set({ grid: newGrid, score: 0, gameOver: false, gameWon: false, isMoving: false, moveCount: 0, isShaking: false });
+                set({
+                    grid: newGrid,
+                    score: 0,
+                    gameOver: false,
+                    gameWon: false,
+                    isMoving: false,
+                    isShaking: false,
+                    startTime: Date.now(),
+                    endTime: null
+                });
             },
 
             loadFromShelby: async (address: string) => {
@@ -65,19 +75,17 @@ export const useGameStore = create<GameState>()(
             },
 
             move: async (direction, address) => {
-                const { grid, score, bestScore, gameOver, isMoving, moveCount } = get();
+                const { grid, score, bestScore, gameOver, isMoving, startTime } = get();
                 if (gameOver || isMoving) return;
 
                 const { newGrid, newScore, moved, maxMerged } = moveGrid(grid, direction);
 
                 if (moved) {
                     set({ isMoving: true });
-                    const newMoveCount = moveCount + 1;
 
-                    // Trigger Shake for high value merges (>= 1024)
                     if (maxMerged >= 1024) {
                         set({ isShaking: true });
-                        setTimeout(() => set({ isShaking: false }), 400);
+                        setTimeout(() => set({ isShaking: false }), 200);
                     }
 
                     const gridWithSpawn = spawnTile(newGrid);
@@ -90,34 +98,19 @@ export const useGameStore = create<GameState>()(
                         score: updatedScore,
                         bestScore: updatedBest,
                         gameOver: isGameOver,
-                        moveCount: newMoveCount
+                        endTime: isGameOver ? Date.now() : null
                     });
 
-                    // Match 350ms transition + overhead
-                    setTimeout(() => set({ isMoving: false }), 400);
+                    // Speedrun: Fast 250ms throttle (matches 200ms transition)
+                    setTimeout(() => set({ isMoving: false }), 250);
 
-                    // Batch Sync: Every 5 moves OR Game Over
-                    if (address && (newMoveCount % 5 === 0 || isGameOver)) {
-                        try {
-                            const { ShelbyService } = await import('@/lib/shelby');
-                            set({ isSyncing: true });
-                            await ShelbyService.saveGame(address, {
-                                grid: gridWithSpawn.map(row => row.map(t => t?.value || null)),
-                                score: updatedScore,
-                                bestScore: updatedBest,
-                                timestamp: Date.now()
-                            });
-                        } catch (e) {
-                            console.error("Sync failed", e);
-                        } finally {
-                            set({ isSyncing: false });
-                        }
-                    }
+                    // Sync logic for background saving could be added here, 
+                    // but the user wants explicit Sync and Minting buttons now.
                 }
             },
         }),
         {
-            name: '2048-shelby-storage',
+            name: '2048-speedrun-shelby',
             partialize: (state) => ({ bestScore: state.bestScore }),
         }
     )
@@ -140,11 +133,11 @@ function spawnTile(grid: (Tile | null)[][]): (Tile | null)[][] {
     const [r, c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
     const newGrid = grid.map(row => [...row]);
 
-    // Hardcore Probabilities: 4 (25%), 8 (5%), 2 (70%)
+    // Hardcore Probabilities remain (25% for 4, 5% for 8)
     const rand = Math.random();
     let value = 2;
     if (rand < 0.05) value = 8;
-    else if (rand < 0.30) value = 4; // 0.05 to 0.30 is 25%
+    else if (rand < 0.30) value = 4;
 
     newGrid[r][c] = {
         id: Date.now() + nextId++,
