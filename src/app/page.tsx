@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import GameBoard from '@/components/GameBoard';
 import WalletSelector from '@/components/WalletSelector';
-import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink, Camera, Timer, User, Image as ImageIcon } from 'lucide-react';
+import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink, Camera, Timer, User, Image as ImageIcon, CheckCircle } from 'lucide-react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { mintNFTMoment, fetchLeaderboard } from '@/lib/shelby-protocol';
 import html2canvas from 'html2canvas';
@@ -19,9 +19,10 @@ export default function Home() {
   const [showRanking, setShowRanking] = useState(false);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
+  const [fileFormat, setFileFormat] = useState<'image/png' | 'image/jpeg'>('image/png');
 
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
-  const certificateRef = useRef<HTMLDivElement>(null);
+  const fullPageCertificateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setHasMounted(true);
@@ -44,43 +45,43 @@ export default function Home() {
     if (!connected || !account) return;
     setIsSubmittingTx(true);
     try {
-      // Show Certificate overlay before capture
-      if (certificateRef.current) {
-        certificateRef.current.style.opacity = '1';
-        certificateRef.current.style.visibility = 'visible';
+      // Show Full Page Certificate overlay before capture
+      if (fullPageCertificateRef.current) {
+        fullPageCertificateRef.current.style.opacity = '1';
+        fullPageCertificateRef.current.style.visibility = 'visible';
       }
 
-      // Capture the WHOLE content area for a "Screen Hot" feeling
-      const element = document.getElementById('main-capture-zone');
-      if (element) {
-        const canvas = await html2canvas(element, {
-          backgroundColor: '#060608',
-          scale: 2,
-          logging: false,
-          useCORS: true,
-          windowWidth: element.scrollWidth,
-          windowHeight: element.scrollHeight
-        });
+      // Capture the WHOLE BODY for a true "Screen Hot" feeling
+      const element = document.body;
+      const canvas = await html2canvas(element, {
+        backgroundColor: '#060608',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+        scrollX: 0,
+        scrollY: 0,
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
 
-        // Hide Certificate after capture
-        if (certificateRef.current) {
-          certificateRef.current.style.opacity = '0';
-          certificateRef.current.style.visibility = 'hidden';
+      // Hide Certificate after capture
+      if (fullPageCertificateRef.current) {
+        fullPageCertificateRef.current.style.opacity = '0';
+        fullPageCertificateRef.current.style.visibility = 'hidden';
+      }
+
+      canvas.toBlob(async (blob: Blob | null) => {
+        if (blob) {
+          const response = await mintNFTMoment(
+            signAndSubmitTransaction,
+            nickname || 'Anony',
+            score,
+            blob
+          );
+          setLastTxHash(response.hash);
+          console.log(`Picture (${fileFormat}) Sent! TX:`, response.hash);
         }
-
-        canvas.toBlob(async (blob: Blob | null) => {
-          if (blob) {
-            const response = await mintNFTMoment(
-              signAndSubmitTransaction,
-              nickname || 'Anony',
-              score,
-              blob
-            );
-            setLastTxHash(response.hash);
-            console.log("Picture Sent! TX:", response.hash);
-          }
-        }, 'image/png');
-      }
+      }, fileFormat, fileFormat === 'image/jpeg' ? 0.9 : undefined);
     } catch (e: any) {
       console.error("Sent Picture failed", e);
     } finally {
@@ -129,8 +130,7 @@ export default function Home() {
       className={`min-h-screen bg-[#060608] text-white flex flex-col items-center p-4 md:p-8 font-sans transition-all overscroll-none overflow-hidden ${isShaking ? 'shake-active' : ''}`}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* MAIN CAPTURE ZONE - This is what will be sent to Shelbynet */}
-      <div id="main-capture-zone" className="w-full max-w-[500px] flex flex-col gap-6 items-center p-4 bg-[#060608] relative">
+      <div className="w-full max-w-[500px] flex flex-col gap-6 items-center p-4 bg-[#060608] relative">
 
         {/* Header */}
         <div className="w-full flex justify-between items-start">
@@ -139,7 +139,7 @@ export default function Home() {
               2048 <span className="text-white text-3xl">🧩</span>
             </h1>
             <p className="text-[10px] font-bold tracking-[0.3em] text-cyan-400 uppercase italic">
-              FULL-SCREEN RECORD
+              FULL SCREEN RECORDING
             </p>
           </div>
           <WalletSelector />
@@ -197,52 +197,66 @@ export default function Home() {
         {/* Game Master Container */}
         <div className="relative w-full">
           <GameBoard />
-
-          {/* VERIFICATION CERTIFICATE (Visible during capture only) */}
-          <div
-            ref={certificateRef}
-            className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-md pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-6 border-4 border-[#ff2a75] shadow-[0_0_60px_rgba(255,42,117,0.3)]"
-          >
-            <Trophy size={60} className="text-[#ff2a75] mb-4" />
-            <h2 className="text-3xl font-black text-white italic tracking-tighter mb-6 uppercase">FULL SESSION CERTIFICATE</h2>
-
-            <div className="w-full grid grid-cols-2 gap-y-4 text-left border-y border-white/10 py-4 mb-4">
-              <div>
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Player Identity</p>
-                <p className="text-lg font-black text-white uppercase">{nickname}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Shelbynet Address</p>
-                <p className="text-[10px] font-black text-cyan-400">{account?.address?.toString().slice(0, 10)}...</p>
-              </div>
-              <div>
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Rank Verified</p>
-                <p className="text-xl font-black text-[#ff2a75]">{score}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Time Elapsed</p>
-                <p className="text-xl font-black text-white">{totalTime}s</p>
-              </div>
-            </div>
-
-            <div className="text-center">
-              <p className="text-[9px] font-black text-gray-600 tracking-[0.4em] uppercase italic">REGISTERED ON SHELBY PROTOCOL</p>
-            </div>
-          </div>
         </div>
 
         <footer className="text-center opacity-30 mt-auto py-6">
-          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.FULL.SESSION.CAPTURE</p>
+          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.FULL.SCREEN.RECORD</p>
         </footer>
       </div>
 
-      {/* GAME OVER TERMINAL (Kept outside main capture zone for cleaner screenshot control if needed, 
-          but handleSentPicture captures main-capture-zone wrapper) */}
+      {/* FULL PAGE DYNAMIC CERTIFICATE (Overlay during capture) */}
+      <div
+        ref={fullPageCertificateRef}
+        className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-xl pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-12 border-[20px] border-[#ff2a75]"
+      >
+        <Trophy size={120} className="text-[#ff2a75] mb-8" />
+        <h2 className="text-6xl font-black text-white italic tracking-tighter mb-12 uppercase text-center">SHELBYNET OFFICAL RECORD</h2>
+
+        <div className="w-full max-w-[800px] grid grid-cols-2 gap-y-12 text-left border-y-2 border-white/10 py-12 mb-12">
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Player Identity</p>
+            <p className="text-4xl font-black text-white uppercase">{nickname}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Shelbynet Address</p>
+            <p className="text-xl font-black text-cyan-400 tabular-nums">{account?.address?.toString()}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Final Ranked Score</p>
+            <p className="text-6xl font-black text-[#ff2a75]">{score}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Total Run Time</p>
+            <p className="text-6xl font-black text-white tabular-nums">{totalTime}s</p>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <p className="text-xs font-black text-gray-600 tracking-[1em] uppercase italic">CRYPTOGRAPHICALLY VERIFIED ON SHELBY PROTOCOL</p>
+        </div>
+      </div>
+
+      {/* GAME OVER TERMINAL */}
       {gameOver && (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
           <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
           <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
-          <p className="text-cyan-400 font-bold mb-8 uppercase tracking-widest">Status: Ready to Sent Full Picture</p>
+
+          {/* Format Selection UI */}
+          <div className="flex gap-4 mb-8 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[300px]">
+            <button
+              onClick={() => setFileFormat('image/png')}
+              className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/png' ? 'bg-[#ff2a75] text-white shadow-[0_0_15px_rgba(255,42,117,0.4)]' : 'bg-white/5 text-gray-500'}`}
+            >
+              {fileFormat === 'image/png' && <CheckCircle size={10} />} PNG
+            </button>
+            <button
+              onClick={() => setFileFormat('image/jpeg')}
+              className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/jpeg' ? 'bg-[#ff2a75] text-white shadow-[0_0_15px_rgba(255,42,117,0.4)]' : 'bg-white/5 text-gray-500'}`}
+            >
+              {fileFormat === 'image/jpeg' && <CheckCircle size={10} />} JPEG
+            </button>
+          </div>
 
           <div className="flex flex-col gap-3 w-full max-w-[320px]">
             <button
