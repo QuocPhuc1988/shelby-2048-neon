@@ -1,90 +1,50 @@
 /**
- * Shelby Protocol Final Evolution - Speedrun & Moment Minting
+ * Shelby Protocol - Ultimate NFT Moment Minting
  * 
  * Logic Requirements:
- * 1. BACKTICKS ( ` ) for SHELBY_MODULE.
- * 2. Uint8Array for p3 Commitment (No Hex Strings).
- * 3. Unique Trophy Name (p1): Rank_[Score]_[Time]s_[Address_Short].
- * 4. Screenshot Minting: SHA-256 of Image Blob.
+ * 1. p1: ${nickname}_${score} (No special characters recommended).
+ * 2. p3: SHA-256 of Image Blob as Uint8Array (binary hash).
+ * 3. p5: Actual Image Size (bytes).
+ * 4. BACKTICKS ( ` ) for SHELBY_MODULE.
  */
 
 export const SHELBY_ADDRESS = "0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a";
 
 /**
- * Sync Game Rank to Shelbynet
- * p1 format: Rank_{score}_{time}s_{addrShort}
+ * Mint NFT Moment to Shelbynet
+ * p1: nickname_score
+ * p3: binary SHA-256 hash
  */
-export async function submitGameRank(
+export async function mintNFTMoment(
     signAndSubmitTransaction: any,
-    accountAddress: string,
+    nickname: string,
     score: number,
-    totalSeconds: number,
-    gameData: any
-) {
-    try {
-        const addrShort = accountAddress.slice(2, 8);
-        const trophyName = `Rank_${score}_${totalSeconds}s_${addrShort}`;
-
-        const serializedData = new TextEncoder().encode(JSON.stringify(gameData));
-        const hashBuffer = await crypto.subtle.digest('SHA-256', serializedData);
-        const commitment = new Uint8Array(hashBuffer);
-
-        const MICROSECONDS_PER_SECOND = 1000000;
-        const expirationUs = (Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)) * MICROSECONDS_PER_SECOND;
-
-        const SHELBY_MODULE = `${SHELBY_ADDRESS}::blob_metadata::register_blob`;
-
-        const payload = {
-            data: {
-                function: SHELBY_MODULE,
-                typeArguments: [],
-                functionArguments: [
-                    trophyName,                             // p1: Trophy Name (Speedrun Style)
-                    expirationUs.toString(),                // p2: Expiration (u64 string)
-                    Array.from(commitment),                 // p3: Commitment (Uint8Array)
-                    1,                                      // p4: Chunks (u32)
-                    serializedData.length.toString(),       // p5: Data Size (u64 string)
-                    0,                                      // p6: Payment (u8)
-                    0                                       // p7: Encoding (u8)
-                ],
-            }
-        };
-
-        const response = await signAndSubmitTransaction(payload);
-        return response;
-    } catch (error) {
-        console.error("[Shelby Rank] Failed:", error);
-        throw error;
-    }
-}
-
-/**
- * Mint Game Moment (Screenshot) to Shelbynet
- * p1: Moment_{timestamp}
- */
-export async function mintGameMoment(
-    signAndSubmitTransaction: any,
     imageBlob: Blob
 ) {
     try {
+        // Calculate SHA-256 Binary Hash
         const arrayBuffer = await imageBlob.arrayBuffer();
         const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
         const commitment = new Uint8Array(hashBuffer);
 
+        // Expiration: 30 days
         const MICROSECONDS_PER_SECOND = 1000000;
         const expirationUs = (Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60)) * MICROSECONDS_PER_SECOND;
 
         const SHELBY_MODULE = `${SHELBY_ADDRESS}::blob_metadata::register_blob`;
-        const momentName = `Moment_${Date.now()}`;
+
+        // Sanitize name: remove non-alphanumeric for safety
+        const safeName = nickname.replace(/[^a-z0-9]/gi, '_');
+        const momentId = `${safeName}_${score}`;
 
         const payload = {
             data: {
                 function: SHELBY_MODULE,
                 typeArguments: [],
                 functionArguments: [
-                    momentName,                             // p1: Image Name
+                    momentId,                               // p1: NFT Name (Nick_Score)
                     expirationUs.toString(),                // p2: Expiration (u64 string)
-                    Array.from(commitment),                 // p3: Image Hash (Uint8Array)
+                    Array.from(commitment),                 // p3: Binary Hash (Uint8Array)
                     1,                                      // p4: Chunks (u32)
                     imageBlob.size.toString(),              // p5: Image Size (u64 string)
                     0,                                      // p6: Payment (u8)
@@ -96,16 +56,18 @@ export async function mintGameMoment(
         const response = await signAndSubmitTransaction(payload);
         return response;
     } catch (error) {
-        console.error("[Shelby Mint] Failed:", error);
+        console.error("[Shelby NFT Mint] Failed:", error);
         throw error;
     }
 }
 
+/**
+ * Fetch Top 10 from Shelbynet (Mock for Speedrun List)
+ */
 export async function fetchLeaderboard() {
-    // Top 10 Mock for Shelbynet Explorer View
     return [
-        { name: "GiaPhat_Speed", score: 20485, time: 240, address: "0x5ae...bb15", timestamp: Date.now() },
-        { name: "Aptos_Pro", score: 18240, time: 310, address: "0x85f...8e6a", timestamp: Date.now() },
-        { name: "Fast_Gamer", score: 15600, time: 350, address: "0x123...4567", timestamp: Date.now() },
+        { name: "SpeedRunner_99", score: 32768, time: 180, address: "0x5ae...bb15", timestamp: Date.now() },
+        { name: "Shelby_Ace", score: 16384, time: 210, address: "0x85f...8e6a", timestamp: Date.now() },
+        { name: "NeonWatcher", score: 8192, time: 245, address: "0x123...4567", timestamp: Date.now() },
     ].sort((a, b) => b.score - a.score);
 }
