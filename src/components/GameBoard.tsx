@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useLayoutEffect } from 'react';
+import React from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -20,49 +20,31 @@ const TILE_COLORS: Record<number, string> = {
 
 const GameBoard: React.FC = () => {
     const { grid } = useGameStore();
-    const boardRef = useRef<HTMLDivElement>(null);
-    const [cellPositions, setCellPositions] = useState<{ top: number; left: number; width: number }[]>([]);
 
-    useLayoutEffect(() => {
-        const calculatePositions = () => {
-            if (!boardRef.current) return;
-            const cells = boardRef.current.querySelectorAll('.grid-cell');
-            const positions = Array.from(cells).map((cell) => {
-                const element = cell as HTMLElement;
-                return {
-                    top: element.offsetTop,
-                    left: element.offsetLeft,
-                    width: element.offsetWidth,
-                };
-            });
-            setCellPositions(positions);
-        };
-
-        calculatePositions();
-        window.addEventListener('resize', calculatePositions);
-        return () => window.removeEventListener('resize', calculatePositions);
-    }, []);
+    // Web2 Standard: Each cell is 100 / GRID_SIZE %
+    // We use CSS Variables (--cell-size, etc.) from globals.css for pixel-perfect scaling.
 
     return (
-        <div
-            id="game-board-capture"
-            ref={boardRef}
-            className="speedrun-grid-container w-full aspect-square box-border relative overflow-hidden shadow-2xl"
-        >
-            {/* Background cells (Lưới nền) */}
-            {Array.from({ length: 16 }).map((_, i) => (
-                <div key={i} className="grid-cell bg-[#1c1c28] rounded-xl border border-white/[0.03] w-full h-full" />
-            ))}
+        <div id="game-board-capture" className="game-container box-border shadow-2xl mx-auto">
+            {/* Background Cell Grid (Lưới nền cố định) */}
+            <div className="grid-background">
+                {Array.from({ length: 16 }).map((_, i) => (
+                    <div key={i} className="grid-cell" />
+                ))}
+            </div>
 
-            {/* Tile Container (Hệ thống CSS Grid Container cho Ô số) */}
-            <div className="tile-container">
+            {/* Tile Container (Lớp chứa ô số) */}
+            <div className="tile-layer">
                 <AnimatePresence>
                     {grid.flatMap((row, r) =>
                         row.map((tile, c) => {
-                            if (!tile || cellPositions.length === 0) return null;
-                            const posIndex = r * 4 + c;
-                            const pos = cellPositions[posIndex];
-                            if (!pos) return null;
+                            if (!tile) return null;
+
+                            // Position calculation using CSS variables from globals.css
+                            // x = c * (cell_size + gap)
+                            // y = r * (cell_size + gap)
+                            const x = `calc(${c} * (var(--cell-size) + var(--grid-gap)))`;
+                            const y = `calc(${r} * (var(--cell-size) + var(--grid-gap)))`;
 
                             return (
                                 <motion.div
@@ -71,16 +53,21 @@ const GameBoard: React.FC = () => {
                                     animate={{
                                         scale: 1,
                                         opacity: 1,
-                                        x: pos.left - 12, // Offset for container padding
-                                        y: pos.top - 12,
+                                        x: x,
+                                        y: y,
                                     }}
                                     exit={{ scale: 0.5, opacity: 0 }}
-                                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-                                    className={`absolute flex items-center justify-center rounded-xl text-2xl font-black select-none
+                                    transition={{
+                                        type: 'spring',
+                                        stiffness: 400,
+                                        damping: 35,
+                                        duration: 0.2 // Web2 Speed (200ms)
+                                    }}
+                                    className={`absolute flex items-center justify-center rounded-lg text-2xl font-black select-none
                                     ${TILE_COLORS[tile.value] || 'bg-[#ffc107] text-white shadow-xl'}`}
                                     style={{
-                                        width: pos.width,
-                                        height: pos.width,
+                                        width: 'var(--cell-size)',
+                                        height: 'var(--cell-size)',
                                         left: 0,
                                         top: 0,
                                     }}

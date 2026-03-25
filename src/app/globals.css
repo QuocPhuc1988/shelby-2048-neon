@@ -6,64 +6,86 @@
   --background: #060608;
   --foreground: #ffffff;
   --transition-ms: 200ms;
-  /* Speedrun Engine Speed */
   --grid-gap: 12px;
+  --board-size: min(90vw, 420px);
+  --cell-size: calc((var(--board-size) - (var(--grid-gap) * 5)) / 4);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  touch-action: manipulation;
+  /* Allow pinch but lock scroll in JS */
 }
 
-/* Speedrun Grid Engine Styles */
-.speedrun-grid-container {
+/* Hard Web2 Core Engine Styles */
+.game-container {
+  width: var(--board-size);
+  height: var(--board-size);
+  background: #111116;
+  border-radius: 12px;
+  padding: var(--grid-gap);
+  position: relative;
+  touch-action: none;
+  /* Lock system gestures for mobile */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.grid-background {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(4, 1fr);
   gap: var(--grid-gap);
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
   padding: var(--grid-gap);
-  position: relative;
-  background: #111116;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  z-index: 1;
 }
 
-.tile-container {
+.grid-cell {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  width: 100%;
+  height: 100%;
+}
+
+.tile-layer {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   padding: var(--grid-gap);
-  pointer-events: none;
   z-index: 10;
+  pointer-events: none;
 }
 
-/* Animations */
+/* Shake Animation (Hardcore Merges) */
 @keyframes shake {
-
-  0%,
-  100% {
+  0% {
     transform: translate(0, 0);
   }
 
   25% {
-    transform: translate(-2px, -2px);
+    transform: translate(-4px, -4px);
   }
 
   75% {
-    transform: translate(2px, 2px);
+    transform: translate(4px, 4px);
+  }
+
+  100% {
+    transform: translate(0, 0);
   }
 }
 
 .shake-active {
-  animation: shake 0.2s ease-in-out;
-}
-
-.glow-record {
-  box-shadow: 0 0 30px rgba(255, 42, 117, 0.4);
+  animation: shake 0.2s cubic-bezier(.36, .07, .19, .97) both;
 }
 
 @layer utilities {
