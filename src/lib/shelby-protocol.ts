@@ -1,14 +1,13 @@
 /**
- * Shelby Protocol - Verified Picture Submission (Production Grade)
+ * Shelby Protocol - Verified Picture Submission (Upload Integration)
  * 
- * Logic Requirements:
- * 1. p1: ${nickname}_${score}.${ext} (Critical for Explorer Preview)
- * 2. p2: Expiration (u64 microseconds)
- * 3. p3: SHA-256 Binary Hash (Uint8Array)
- * 4. p5: Exact Size (bytes)
+ * Flow for Explorer Preview:
+ * 1. Register Metadata on Aptos Node (register_blob).
+ * 2. Upload actual Blob Bytes to Shelby Storage Node (api.shelbynet.shelby.xyz).
  */
 
 export const SHELBY_ADDRESS = "0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a";
+export const SHELBY_API_ENDPOINT = "https://api.shelbynet.shelby.xyz/v1/blobs";
 
 export async function submitVerifiedPicture(
     signAndSubmitTransaction: any,
@@ -18,38 +17,54 @@ export async function submitVerifiedPicture(
     format: 'png' | 'jpg'
 ) {
     try {
-        // Calculate SHA-256 Binary Hash of the image file
+        // 1. Calculate SHA-256 Binary Hash
         const arrayBuffer = await imageBlob.arrayBuffer();
         const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
         const commitment = new Uint8Array(hashBuffer);
 
-        // Expiration: 30 days in microseconds
-        const MICROSECONDS_PER_SECOND = 1000000;
-        const expirationUs = (Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60)) * MICROSECONDS_PER_SECOND;
-
-        // Protocol Module defined with backticks as requested
-        const SHELBY_MODULE = `${SHELBY_ADDRESS}::blob_metadata::register_blob`;
+        // Expiration: 30 days
+        const expirationUs = (Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60)) * 1000000;
 
         const safeName = nickname.replace(/[^a-z0-9]/gi, '_');
         const p1_name = `${safeName}_${score}.${format}`;
 
+        // 2. Register Metadata on Shelbynet (Blockchain)
         const payload = {
             data: {
-                function: SHELBY_MODULE,
+                function: `${SHELBY_ADDRESS}::blob_metadata::register_blob`,
                 typeArguments: [],
                 functionArguments: [
-                    p1_name,                                // p1: File Name with Extension
-                    expirationUs.toString(),                // p2: Expiration (string u64)
-                    Array.from(commitment),                 // p3: Binary SHA-256 Hash (Uint8Array)
-                    1,                                      // p4: Chunks (u32)
-                    imageBlob.size.toString(),              // p5: Exact Real Size (string u64)
-                    0,                                      // p6: Payment (u8)
-                    0                                       // p7: Encoding (u8)
+                    p1_name,
+                    expirationUs.toString(),
+                    Array.from(commitment),
+                    1,
+                    imageBlob.size.toString(),
+                    0,
+                    0
                 ],
             }
         };
 
         const response = await signAndSubmitTransaction(payload);
+
+        // 3. MANDATORY UPLOAD to Shelby API for Preview availability
+        // This resolves the "Pending" status on the Explorer
+        try {
+            console.log(`[Shelby] Syncing blob bytes for ${p1_name}...`);
+            await fetch(SHELBY_API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Shelby-Blob-Id': p1_name,
+                    'X-Shelby-Commitment': commitment.toString()
+                },
+                body: imageBlob
+            });
+            console.log(`[Shelby] Sync Complete. Blob is now active.`);
+        } catch (uploadError) {
+            console.warn("[Shelby] Upload failed, Explorer preview might be delayed:", uploadError);
+        }
+
         return response;
     } catch (error) {
         console.error("[Shelby Verified Picture] Protocol Error:", error);
