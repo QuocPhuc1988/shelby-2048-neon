@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import GameBoard from '@/components/GameBoard';
 import WalletSelector from '@/components/WalletSelector';
-import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink, Camera, Timer, User, Image as ImageIcon, CheckCircle } from 'lucide-react';
+import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink, Camera, Timer, User, Image as ImageIcon, CheckCircle, ShieldCheck } from 'lucide-react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { mintNFTMoment, fetchLeaderboard } from '@/lib/shelby-protocol';
 import html2canvas from 'html2canvas';
@@ -42,7 +42,9 @@ export default function Home() {
   const totalTime = endTime && startTime ? Math.floor((endTime - startTime) / 1000) : currentTime;
 
   const handleSentPicture = async () => {
-    if (!connected || !account) return;
+    // Strictly prevent multiple submissions
+    if (!connected || !account || isSubmittingTx || lastTxHash) return;
+
     setIsSubmittingTx(true);
     try {
       // Show Full Page Certificate overlay before capture
@@ -72,19 +74,25 @@ export default function Home() {
 
       canvas.toBlob(async (blob: Blob | null) => {
         if (blob) {
-          const response = await mintNFTMoment(
-            signAndSubmitTransaction,
-            nickname || 'Anony',
-            score,
-            blob
-          );
-          setLastTxHash(response.hash);
-          console.log(`Picture (${fileFormat}) Sent! TX:`, response.hash);
+          try {
+            const response = await mintNFTMoment(
+              signAndSubmitTransaction,
+              nickname || 'Anony',
+              score,
+              blob
+            );
+            setLastTxHash(response.hash);
+            console.log(`Picture (${fileFormat}) Sent! TX:`, response.hash);
+          } catch (txError) {
+            console.error("Transaction rejected or failed", txError);
+            setIsSubmittingTx(false); // Allow retry if tx failed/rejected
+          }
+        } else {
+          setIsSubmittingTx(false);
         }
       }, fileFormat, fileFormat === 'image/jpeg' ? 0.9 : undefined);
     } catch (e: any) {
       console.error("Sent Picture failed", e);
-    } finally {
       setIsSubmittingTx(false);
     }
   };
@@ -130,7 +138,7 @@ export default function Home() {
       className={`min-h-screen bg-[#060608] text-white flex flex-col items-center p-4 md:p-8 font-sans transition-all overscroll-none overflow-hidden ${isShaking ? 'shake-active' : ''}`}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      <div className="w-full max-w-[500px] flex flex-col gap-6 items-center p-4 bg-[#060608] relative">
+      <div id="main-capture-zone" className="w-full max-w-[500px] flex flex-col gap-6 items-center p-4 bg-[#060608] relative">
 
         {/* Header */}
         <div className="w-full flex justify-between items-start">
@@ -139,7 +147,7 @@ export default function Home() {
               2048 <span className="text-white text-3xl">🧩</span>
             </h1>
             <p className="text-[10px] font-bold tracking-[0.3em] text-cyan-400 uppercase italic">
-              FULL SCREEN RECORDING
+              FULL SESSION RECORD
             </p>
           </div>
           <WalletSelector />
@@ -165,7 +173,10 @@ export default function Home() {
         {/* Action Center */}
         <div className="w-full flex justify-between items-center bg-[#111116] p-2 rounded-2xl border border-white/5">
           <div className="flex gap-2">
-            <button onClick={() => initGame()} className="px-4 py-3 bg-[#111116] hover:bg-white/5 rounded-xl border border-white/10 active:scale-95">
+            <button
+              onClick={() => { setLastTxHash(null); initGame(); }}
+              className="px-4 py-3 bg-[#111116] hover:bg-white/5 rounded-xl border border-white/10 active:scale-95"
+            >
               <RefreshCw size={18} className="text-[#ff2a75]" />
             </button>
             <button onClick={openRanking} className="px-4 py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/20">
@@ -200,85 +211,99 @@ export default function Home() {
         </div>
 
         <footer className="text-center opacity-30 mt-auto py-6">
-          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.FULL.SCREEN.RECORD</p>
+          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.FINAL.RECORD.V4</p>
         </footer>
       </div>
 
       {/* FULL PAGE DYNAMIC CERTIFICATE (Overlay during capture) */}
       <div
         ref={fullPageCertificateRef}
-        className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-xl pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-12 border-[20px] border-[#ff2a75]"
+        className="fixed inset-0 z-[999] bg-black/98 backdrop-blur-2xl pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-12 border-[24px] border-[#ff2a75]"
       >
-        <Trophy size={120} className="text-[#ff2a75] mb-8" />
-        <h2 className="text-6xl font-black text-white italic tracking-tighter mb-12 uppercase text-center">SHELBYNET OFFICAL RECORD</h2>
+        <Trophy size={140} className="text-[#ff2a75] mb-8" />
+        <h2 className="text-7xl font-black text-white italic tracking-tighter mb-16 uppercase text-center drop-shadow-[0_0_30px_rgba(255,42,117,1)]">SHELBYNET OFFICAL RUN</h2>
 
-        <div className="w-full max-w-[800px] grid grid-cols-2 gap-y-12 text-left border-y-2 border-white/10 py-12 mb-12">
+        <div className="w-full max-w-[900px] grid grid-cols-2 gap-y-16 text-left border-y-4 border-white/10 py-16 mb-16">
           <div>
-            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Player Identity</p>
-            <p className="text-4xl font-black text-white uppercase">{nickname}</p>
+            <p className="text-sm text-gray-500 uppercase font-black tracking-[0.6em] mb-3">Player Master</p>
+            <p className="text-5xl font-black text-white uppercase">{nickname}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Shelbynet Address</p>
-            <p className="text-xl font-black text-cyan-400 tabular-nums">{account?.address?.toString()}</p>
+            <p className="text-sm text-gray-500 uppercase font-black tracking-[0.6em] mb-3">On-chain Identity</p>
+            <p className="text-2xl font-black text-cyan-400 tabular-nums">{account?.address?.toString()}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Final Ranked Score</p>
-            <p className="text-6xl font-black text-[#ff2a75]">{score}</p>
+            <p className="text-sm text-gray-500 uppercase font-black tracking-[0.6em] mb-3">Verified Points</p>
+            <p className="text-7xl font-black text-[#ff2a75]">{score}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-500 uppercase font-black tracking-[0.5em] mb-2">Total Run Time</p>
-            <p className="text-6xl font-black text-white tabular-nums">{totalTime}s</p>
+            <p className="text-sm text-gray-500 uppercase font-black tracking-[0.6em] mb-3">Completion Speed</p>
+            <p className="text-7xl font-black text-white tabular-nums">{totalTime}s</p>
           </div>
         </div>
 
         <div className="text-center">
-          <p className="text-xs font-black text-gray-600 tracking-[1em] uppercase italic">CRYPTOGRAPHICALLY VERIFIED ON SHELBY PROTOCOL</p>
+          <p className="text-sm font-black text-gray-500 tracking-[1.5em] uppercase italic opacity-50">CRYPTOGRAPHICALLY SECURED ON SHELBY PROTOCOL</p>
         </div>
       </div>
 
       {/* GAME OVER TERMINAL */}
       {gameOver && (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
-          <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
-          <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
+          {lastTxHash ? (
+            <div className="flex flex-col items-center">
+              <ShieldCheck size={100} className="text-green-500 mb-6 animate-bounce" />
+              <h2 className="text-5xl font-black text-white uppercase italic tracking-tighter mb-2">RECORD VERIFIED</h2>
+              <p className="text-gray-400 font-bold mb-8">Transaction successfully sent to Shelbynet.</p>
+            </div>
+          ) : (
+            <>
+              <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
+              <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
+              <p className="text-cyan-400 font-bold mb-8 uppercase tracking-widest">Select Format & Sent Record</p>
+            </>
+          )}
 
-          {/* Format Selection UI */}
-          <div className="flex gap-4 mb-8 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[300px]">
-            <button
-              onClick={() => setFileFormat('image/png')}
-              className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/png' ? 'bg-[#ff2a75] text-white shadow-[0_0_15px_rgba(255,42,117,0.4)]' : 'bg-white/5 text-gray-500'}`}
-            >
-              {fileFormat === 'image/png' && <CheckCircle size={10} />} PNG
-            </button>
-            <button
-              onClick={() => setFileFormat('image/jpeg')}
-              className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/jpeg' ? 'bg-[#ff2a75] text-white shadow-[0_0_15px_rgba(255,42,117,0.4)]' : 'bg-white/5 text-gray-500'}`}
-            >
-              {fileFormat === 'image/jpeg' && <CheckCircle size={10} />} JPEG
-            </button>
-          </div>
+          {/* Format Selection UI - Hidden after success */}
+          {!lastTxHash && (
+            <div className="flex gap-4 mb-8 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[300px]">
+              <button
+                onClick={() => setFileFormat('image/png')}
+                className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/png' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,0.5)]' : 'bg-white/5 text-gray-500'}`}
+              >
+                {fileFormat === 'image/png' && <CheckCircle size={10} />} PNG
+              </button>
+              <button
+                onClick={() => setFileFormat('image/jpeg')}
+                className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/jpeg' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,0.5)]' : 'bg-white/5 text-gray-500'}`}
+              >
+                {fileFormat === 'image/jpeg' && <CheckCircle size={10} />} JPEG
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 w-full max-w-[320px]">
-            <button
-              onClick={handleSentPicture}
-              disabled={isSubmittingTx}
-              className="w-full py-5 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_50px_rgba(255,42,117,0.5)] transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-widest text-xl"
-            >
-              <Send size={24} /> SENT PICTURE
-            </button>
-
-            {lastTxHash && (
+            {!lastTxHash ? (
+              <button
+                onClick={handleSentPicture}
+                disabled={isSubmittingTx}
+                className="w-full py-5 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_50px_rgba(255,42,117,0.5)] transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-widest text-xl group"
+              >
+                <Send size={24} className={isSubmittingTx ? 'animate-ping' : 'group-hover:translate-x-1 transition-transform'} />
+                {isSubmittingTx ? 'SENDING...' : 'SENT PICTURE'}
+              </button>
+            ) : (
               <a
                 href={`https://explorer.shelby.xyz/transaction/${lastTxHash}`}
                 target="_blank"
-                className="mt-2 text-[10px] text-cyan-400 font-black underline uppercase flex items-center justify-center gap-2 hover:text-white transition-colors"
+                className="w-full py-5 bg-green-500/20 hover:bg-green-500/30 text-green-400 font-black rounded-xl border border-green-500/30 flex items-center justify-center gap-3 transition-all uppercase tracking-widest"
               >
-                <ExternalLink size={12} /> View On Shelby Explorer
+                <ExternalLink size={24} /> VIEW ON EXPLORER
               </a>
             )}
 
             <button
-              onClick={() => initGame()}
+              onClick={() => { setLastTxHash(null); setIsSubmittingTx(false); initGame(); }}
               className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline underline-offset-8"
             >
               Start New Session
@@ -296,14 +321,14 @@ export default function Home() {
               <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white">Global Ranking</h3>
               <button onClick={() => setShowRanking(false)} className="p-2 text-white/20 hover:text-white"><X /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
               <div className="flex flex-col gap-2">
                 {leaderboard.map((item, i) => (
                   <div key={i} className="flex justify-between items-center p-4 bg-[#16161f] rounded-2xl border border-white/5">
                     <div className="flex items-center gap-4">
                       <span className="text-gray-600 font-black">{i + 1}</span>
                       <div className="flex flex-col text-left">
-                        <span className="font-black text-sm text-gray-200 uppercase">{item.name}</span>
+                        <span className="font-black text-sm text-gray-200 uppercase">{item.nickname || item.name}</span>
                         <span className="text-[9px] text-indigo-400 font-bold">{item.time}s Speedrun</span>
                       </div>
                     </div>
