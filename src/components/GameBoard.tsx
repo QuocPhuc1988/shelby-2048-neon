@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useGameStore } from '@/store/useGameStore';
+import { useGameStore, Tile } from '@/store/useGameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const TILE_COLORS: Record<number, string> = {
@@ -19,67 +19,63 @@ const TILE_COLORS: Record<number, string> = {
 };
 
 const GameBoard: React.FC = () => {
-    const { grid } = useGameStore();
-
-    // Web2 Standard: Each cell is 100 / GRID_SIZE %
-    // We use CSS Variables (--cell-size, etc.) from globals.css for pixel-perfect scaling.
+    const { tiles } = useGameStore();
 
     return (
-        <div id="game-board-capture" className="game-container box-border shadow-2xl mx-auto">
-            {/* Background Cell Grid (Lưới nền cố định) */}
+        <div id="game-board-capture" className="game-container box-border shadow-2xl mx-auto overflow-hidden">
+            {/* Background Cell Grid */}
             <div className="grid-background">
                 {Array.from({ length: 16 }).map((_, i) => (
                     <div key={i} className="grid-cell" />
                 ))}
             </div>
 
-            {/* Tile Container (Lớp chứa ô số) */}
+            {/* Tile Layer (Web2 Sliding Logic) */}
             <div className="tile-layer">
                 <AnimatePresence>
-                    {grid.flatMap((row, r) =>
-                        row.map((tile, c) => {
-                            if (!tile) return null;
-
-                            // Position calculation using CSS variables from globals.css
-                            // x = c * (cell_size + gap)
-                            // y = r * (cell_size + gap)
-                            const x = `calc(${c} * (var(--cell-size) + var(--grid-gap)))`;
-                            const y = `calc(${r} * (var(--cell-size) + var(--grid-gap)))`;
-
-                            return (
-                                <motion.div
-                                    key={tile.id}
-                                    initial={{ scale: 0.5, opacity: 0 }}
-                                    animate={{
-                                        scale: 1,
-                                        opacity: 1,
-                                        x: x,
-                                        y: y,
-                                    }}
-                                    exit={{ scale: 0.5, opacity: 0 }}
-                                    transition={{
-                                        type: 'spring',
-                                        stiffness: 400,
-                                        damping: 35,
-                                        duration: 0.2 // Web2 Speed (200ms)
-                                    }}
-                                    className={`absolute flex items-center justify-center rounded-lg text-2xl font-black select-none
-                                    ${TILE_COLORS[tile.value] || 'bg-[#ffc107] text-white shadow-xl'}`}
-                                    style={{
-                                        width: 'var(--cell-size)',
-                                        height: 'var(--cell-size)',
-                                        left: 0,
-                                        top: 0,
-                                    }}
-                                >
-                                    <span className="drop-shadow-sm">{tile.value}</span>
-                                </motion.div>
-                            );
-                        })
-                    )}
+                    {tiles.map((tile) => (
+                        <TileItem key={tile.id} tile={tile} />
+                    ))}
                 </AnimatePresence>
             </div>
         </div>
+    );
+};
+
+const TileItem: React.FC<{ tile: Tile }> = ({ tile }) => {
+    // Standard calc mapping: x/y [0-3] -> pixel positions via CSS variables
+    const xPos = `calc(${tile.x} * (var(--cell-size) + var(--grid-gap)))`;
+    const yPos = `calc(${tile.y} * (var(--cell-size) + var(--grid-gap)))`;
+
+    return (
+        <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{
+                scale: 1,
+                opacity: 1,
+                // Using x/y for high-performance sliding
+                x: xPos,
+                y: yPos,
+            }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{
+                x: { type: 'spring', stiffness: 500, damping: 45 },
+                y: { type: 'spring', stiffness: 500, damping: 45 },
+                scale: { duration: 0.15 },
+                opacity: { duration: 0.1 }
+            }}
+            className={`absolute flex items-center justify-center rounded-lg text-2xl md:text-3xl font-black select-none
+            ${TILE_COLORS[tile.value] || 'bg-[#ffc107] text-white shadow-xl'}
+            ${tile.mergedFrom ? 'z-20' : 'z-10'}`} // Source of merges slides OVER other tiles
+            style={{
+                width: 'var(--cell-size)',
+                height: 'var(--cell-size)',
+                left: 0,
+                top: 0,
+            }}
+        >
+            <span className="drop-shadow-sm">{tile.value}</span>
+        </motion.div>
     );
 };
 

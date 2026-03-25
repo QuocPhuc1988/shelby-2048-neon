@@ -1,55 +1,52 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type Tile = {
+export type Tile = {
     id: number;
     value: number;
-    position: [number, number];
+    x: number;
+    y: number;
+    mergedFrom?: number[]; // IDs of tiles that merged into this one
 };
 
 type GameState = {
-    grid: (Tile | null)[][];
+    tiles: Tile[];
     score: number;
     bestScore: number;
     gameOver: boolean;
-    gameWon: boolean;
-    isSyncing: boolean;
     isMoving: boolean;
     isShaking: boolean;
     startTime: number | null;
     endTime: number | null;
     initGame: () => void;
-    move: (direction: 'up' | 'down' | 'left' | 'right', address?: string) => void;
-    loadFromShelby: (address: string) => Promise<void>;
+    move: (direction: 'up' | 'down' | 'left' | 'right') => void;
 };
 
 const GRID_SIZE = 4;
-
-const createEmptyGrid = () =>
-    Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
+let nextId = 1;
 
 export const useGameStore = create<GameState>()(
     persist(
         (set, get) => ({
-            grid: createEmptyGrid(),
+            tiles: [],
             score: 0,
             bestScore: 0,
             gameOver: false,
-            gameWon: false,
-            isSyncing: false,
             isMoving: false,
             isShaking: false,
             startTime: null,
             endTime: null,
 
             initGame: () => {
-                let newGrid = createEmptyGrid();
-                newGrid = spawnTile(spawnTile(newGrid));
+                const t1 = createTile(Math.floor(Math.random() * 4), Math.floor(Math.random() * 4));
+                let t2 = createTile(Math.floor(Math.random() * 4), Math.floor(Math.random() * 4));
+                while (t1.x === t2.x && t1.y === t2.y) {
+                    t2 = createTile(Math.floor(Math.random() * 4), Math.floor(Math.random() * 4));
+                }
                 set({
-                    grid: newGrid,
+                    tiles: [t1, t2],
                     score: 0,
                     gameOver: false,
-                    gameWon: false,
                     isMoving: false,
                     isShaking: false,
                     startTime: Date.now(),
@@ -57,162 +54,169 @@ export const useGameStore = create<GameState>()(
                 });
             },
 
-            loadFromShelby: async (address: string) => {
-                const { ShelbyService } = await import('@/lib/shelby');
-                set({ isSyncing: true });
-                const remoteData = await ShelbyService.loadGame(address);
-                if (remoteData) {
-                    const restoredGrid = remoteData.grid.map((row, r) =>
-                        row.map((val, c) => val ? { id: Math.random(), value: val, position: [r, c] as [number, number] } : null)
-                    );
-                    set({
-                        grid: restoredGrid,
-                        score: remoteData.score,
-                        bestScore: Math.max(get().bestScore, remoteData.bestScore)
-                    });
-                }
-                set({ isSyncing: false });
-            },
-
-            move: async (direction, address) => {
-                const { grid, score, bestScore, gameOver, isMoving, startTime } = get();
+            move: (direction) => {
+                const { tiles, score, bestScore, gameOver, isMoving } = get();
                 if (gameOver || isMoving) return;
 
-                const { newGrid, newScore, moved, maxMerged } = moveGrid(grid, direction);
+                const { nextTiles, addedScore, moved, maxMergedValue } = calculateMove(tiles, direction);
 
                 if (moved) {
-                    set({ isMoving: true });
+                    set({ isMoving: true, tiles: nextTiles });
 
-                    if (maxMerged >= 1024) {
+                    if (maxMergedValue >= 1024) {
                         set({ isShaking: true });
                         setTimeout(() => set({ isShaking: false }), 200);
                     }
 
-                    const gridWithSpawn = spawnTile(newGrid);
-                    const isGameOver = checkGameOver(gridWithSpawn);
-                    const updatedScore = score + newScore;
-                    const updatedBest = Math.max(bestScore, updatedScore);
+                    // Wait for sliding animation (200ms) before spawning & settling
+                    setTimeout(() => {
+                        const finalTiles = settleMerge(nextTiles);
+                        const spawnedTiles = spawnRandomTile(finalTiles);
+                        const isGameOver = checkGameOver(spawnedTiles);
 
-                    set({
-                        grid: gridWithSpawn,
-                        score: updatedScore,
-                        bestScore: updatedBest,
-                        gameOver: isGameOver,
-                        endTime: isGameOver ? Date.now() : null
-                    });
-
-                    // Speedrun: Fast 250ms throttle (matches 200ms transition)
-                    setTimeout(() => set({ isMoving: false }), 250);
-
-                    // Sync logic for background saving could be added here, 
-                    // but the user wants explicit Sync and Minting buttons now.
+                        set({
+                            tiles: spawnedTiles,
+                            score: score + addedScore,
+                            bestScore: Math.max(bestScore, score + addedScore),
+                            gameOver: isGameOver,
+                            endTime: isGameOver ? Date.now() : null,
+                            isMoving: false
+                        });
+                    }, 200);
                 }
             },
         }),
         {
-            name: '2048-speedrun-shelby',
+            name: '2048-ultimate-engine',
             partialize: (state) => ({ bestScore: state.bestScore }),
         }
     )
 );
 
-// --- Helpers ---
+// --- Core Helper Logic (Web2 Ported) ---
 
-let nextId = 1;
-
-function spawnTile(grid: (Tile | null)[][]): (Tile | null)[][] {
-    const emptyCells: [number, number][] = [];
-    for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-            if (!grid[r][c]) emptyCells.push([r, c]);
-        }
-    }
-
-    if (emptyCells.length === 0) return grid;
-
-    const [r, c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-    const newGrid = grid.map(row => [...row]);
-
+function createTile(x: number, y: number, value?: number): Tile {
     // Hardcore Probabilities remain (25% for 4, 5% for 8)
-    const rand = Math.random();
-    let value = 2;
-    if (rand < 0.05) value = 8;
-    else if (rand < 0.30) value = 4;
-
-    newGrid[r][c] = {
-        id: Date.now() + nextId++,
-        value,
-        position: [r, c],
-    };
-
-    return newGrid;
+    if (!value) {
+        const rand = Math.random();
+        if (rand < 0.05) value = 8;
+        else if (rand < 0.30) value = 4;
+        else value = 2;
+    }
+    return { id: Date.now() + nextId++, x, y, value };
 }
 
-function moveGrid(grid: (Tile | null)[][], direction: string) {
-    let newGrid = grid.map(row => [...row]);
+function calculateMove(tiles: Tile[], direction: string) {
     let moved = false;
-    let newScore = 0;
-    let maxMerged = 0;
+    let addedScore = 0;
+    let maxMergedValue = 0;
 
-    const rotations: Record<string, number> = { up: 1, right: 2, down: 3, left: 0 };
-    const numRotations = rotations[direction] || 0;
+    const nextTiles = tiles.map(t => ({ ...t }));
+    const isVertical = direction === 'up' || direction === 'down';
+    const isForward = direction === 'right' || direction === 'down';
 
-    for (let i = 0; i < numRotations; i++) newGrid = rotateGrid(newGrid);
+    // Sort tiles so we process the ones closest to the edge first
+    nextTiles.sort((a, b) => {
+        if (isVertical) return isForward ? b.y - a.y : a.y - b.y;
+        return isForward ? b.x - a.x : a.x - b.x;
+    });
 
-    for (let r = 0; r < GRID_SIZE; r++) {
-        const row = newGrid[r].filter(tile => tile !== null) as Tile[];
-        const newRow: (Tile | null)[] = [];
+    const mergedIds = new Set<number>();
 
-        for (let c = 0; c < row.length; c++) {
-            if (c < row.length - 1 && row[c].value === row[c + 1].value) {
-                const combinedValue = row[c].value * 2;
-                maxMerged = Math.max(maxMerged, combinedValue);
-                newRow.push({
-                    id: Date.now() + nextId++,
-                    value: combinedValue,
-                    position: [r, newRow.length],
-                });
-                newScore += combinedValue;
-                c++;
-                moved = true;
+    nextTiles.forEach(tile => {
+        let currentX = tile.x;
+        let currentY = tile.y;
+
+        while (true) {
+            const nextX = isVertical ? currentX : (isForward ? currentX + 1 : currentX - 1);
+            const nextY = isVertical ? (isForward ? currentY + 1 : currentY - 1) : currentY;
+
+            if (nextX < 0 || nextX >= GRID_SIZE || nextY < 0 || nextY >= GRID_SIZE) break;
+
+            const targetTile = nextTiles.find(t => t.x === nextX && t.y === nextY && !t.mergedFrom);
+
+            if (targetTile) {
+                if (targetTile.value === tile.value && !mergedIds.has(targetTile.id) && !mergedIds.has(tile.id)) {
+                    // Merge!
+                    tile.x = nextX;
+                    tile.y = nextY;
+                    tile.mergedFrom = [tile.id, targetTile.id];
+                    mergedIds.add(tile.id);
+                    mergedIds.add(targetTile.id);
+                    addedScore += tile.value * 2;
+                    maxMergedValue = Math.max(maxMergedValue, tile.value * 2);
+                    moved = true;
+                }
+                break; // Hit another tile, stop
             } else {
-                newRow.push({ ...row[c], position: [r, newRow.length] });
-                if (row[c].position[1] !== newRow.length - 1) moved = true;
+                currentX = nextX;
+                currentY = nextY;
+                moved = true;
             }
         }
+        tile.x = currentX;
+        tile.y = currentY;
+    });
 
-        while (newRow.length < GRID_SIZE) newRow.push(null);
-        if (JSON.stringify(newGrid[r].map(t => t?.value)) !== JSON.stringify(newRow.map(t => t?.value))) moved = true;
-        newGrid[r] = newRow;
-    }
-
-    for (let i = 0; i < (4 - numRotations) % 4; i++) newGrid = rotateGrid(newGrid);
-
-    for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-            if (newGrid[r][c]) newGrid[r][c]!.position = [r, c];
-        }
-    }
-
-    return { newGrid, newScore, moved, maxMerged };
+    return { nextTiles, addedScore, moved, maxMergedValue };
 }
 
-function rotateGrid(grid: (Tile | null)[][]) {
-    const newGrid = createEmptyGrid();
-    for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-            newGrid[c][GRID_SIZE - 1 - r] = grid[r][c];
+function settleMerge(tiles: Tile[]): Tile[] {
+    const finalTiles: Tile[] = [];
+    const processedIds = new Set<number>();
+
+    tiles.forEach(tile => {
+        if (processedIds.has(tile.id)) return;
+
+        if (tile.mergedFrom) {
+            // This is a tile that merged into another. 
+            // In our simple logic, we find its partner and create the new tile.
+            const partner = tiles.find(t => t.id === tile.mergedFrom![1]);
+            const newValue = tile.value * 2;
+            finalTiles.push({
+                id: Date.now() + nextId++,
+                x: tile.x,
+                y: tile.y,
+                value: newValue
+            });
+            processedIds.add(tile.id);
+            processedIds.add(partner!.id);
+        } else {
+            // Check if anyone merged into ME (shouldn't happen with our sorting but let's be safe)
+            const source = tiles.find(t => t.mergedFrom?.includes(tile.id));
+            if (!source) {
+                finalTiles.push(tile);
+                processedIds.add(tile.id);
+            }
         }
-    }
-    return newGrid;
+    });
+
+    return finalTiles;
 }
 
-function checkGameOver(grid: (Tile | null)[][]): boolean {
-    for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-            if (!grid[r][c]) return false;
-            if (r < GRID_SIZE - 1 && grid[r][c]?.value === grid[r + 1][c]?.value) return false;
-            if (c < GRID_SIZE - 1 && grid[r][c]?.value === grid[r][c + 1]?.value) return false;
+function spawnRandomTile(tiles: Tile[]): Tile[] {
+    const occupied = new Set(tiles.map(t => `${t.x},${t.y}`));
+    const empty: [number, number][] = [];
+    for (let x = 0; x < GRID_SIZE; x++) {
+        for (let y = 0; y < GRID_SIZE; y++) {
+            if (!occupied.has(`${x},${y}`)) empty.push([x, y]);
+        }
+    }
+    if (empty.length === 0) return tiles;
+    const [rx, ry] = empty[Math.floor(Math.random() * empty.length)];
+    return [...tiles, createTile(rx, ry)];
+}
+
+function checkGameOver(tiles: Tile[]): boolean {
+    if (tiles.length < GRID_SIZE * GRID_SIZE) return false;
+    for (const t of tiles) {
+        const neighbors = [
+            { x: t.x + 1, y: t.y }, { x: t.x - 1, y: t.y },
+            { x: t.x, y: t.y + 1 }, { x: t.x, y: t.y - 1 }
+        ];
+        for (const n of neighbors) {
+            const neighbor = tiles.find(nt => nt.x === n.x && nt.y === n.y);
+            if (neighbor && neighbor.value === t.value) return false;
         }
     }
     return true;
