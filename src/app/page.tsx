@@ -50,13 +50,16 @@ export default function Home() {
         certificateRef.current.style.visibility = 'visible';
       }
 
-      const element = document.getElementById('game-board-capture');
+      // Capture the WHOLE content area for a "Screen Hot" feeling
+      const element = document.getElementById('main-capture-zone');
       if (element) {
         const canvas = await html2canvas(element, {
           backgroundColor: '#060608',
           scale: 2,
           logging: false,
-          useCORS: true
+          useCORS: true,
+          windowWidth: element.scrollWidth,
+          windowHeight: element.scrollHeight
         });
 
         // Hide Certificate after capture
@@ -67,7 +70,6 @@ export default function Home() {
 
         canvas.toBlob(async (blob: Blob | null) => {
           if (blob) {
-            // Reusing the mintNFTMoment logic but with the new naming/context
             const response = await mintNFTMoment(
               signAndSubmitTransaction,
               nickname || 'Anony',
@@ -127,7 +129,8 @@ export default function Home() {
       className={`min-h-screen bg-[#060608] text-white flex flex-col items-center p-4 md:p-8 font-sans transition-all overscroll-none overflow-hidden ${isShaking ? 'shake-active' : ''}`}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      <div className="w-full max-w-[500px] flex flex-col gap-6 items-center">
+      {/* MAIN CAPTURE ZONE - This is what will be sent to Shelbynet */}
+      <div id="main-capture-zone" className="w-full max-w-[500px] flex flex-col gap-6 items-center p-4 bg-[#060608] relative">
 
         {/* Header */}
         <div className="w-full flex justify-between items-start">
@@ -136,7 +139,7 @@ export default function Home() {
               2048 <span className="text-white text-3xl">🧩</span>
             </h1>
             <p className="text-[10px] font-bold tracking-[0.3em] text-cyan-400 uppercase italic">
-              SENT PICTURE ON-CHAIN
+              FULL-SCREEN RECORD
             </p>
           </div>
           <WalletSelector />
@@ -198,108 +201,109 @@ export default function Home() {
           {/* VERIFICATION CERTIFICATE (Visible during capture only) */}
           <div
             ref={certificateRef}
-            className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-6 border-4 border-[#ff2a75]"
+            className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-md pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-6 border-4 border-[#ff2a75] shadow-[0_0_60px_rgba(255,42,117,0.3)]"
           >
             <Trophy size={60} className="text-[#ff2a75] mb-4" />
-            <h2 className="text-3xl font-black text-white italic tracking-tighter mb-6 uppercase">SHELBYNET RUN RECORD</h2>
+            <h2 className="text-3xl font-black text-white italic tracking-tighter mb-6 uppercase">FULL SESSION CERTIFICATE</h2>
 
             <div className="w-full grid grid-cols-2 gap-y-4 text-left border-y border-white/10 py-4 mb-4">
               <div>
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Player</p>
+                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Player Identity</p>
                 <p className="text-lg font-black text-white uppercase">{nickname}</p>
               </div>
               <div className="text-right">
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Address</p>
+                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Shelbynet Address</p>
                 <p className="text-[10px] font-black text-cyan-400">{account?.address?.toString().slice(0, 10)}...</p>
               </div>
               <div>
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Rank/Score</p>
+                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Rank Verified</p>
                 <p className="text-xl font-black text-[#ff2a75]">{score}</p>
               </div>
               <div className="text-right">
-                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Total Time</p>
+                <p className="text-[8px] text-gray-400 uppercase font-black tracking-widest">Time Elapsed</p>
                 <p className="text-xl font-black text-white">{totalTime}s</p>
               </div>
             </div>
 
             <div className="text-center">
-              <p className="text-[9px] font-black text-gray-500 tracking-[0.4em] uppercase italic">VERIFIED BY SHELBY PROTOCOL</p>
+              <p className="text-[9px] font-black text-gray-600 tracking-[0.4em] uppercase italic">REGISTERED ON SHELBY PROTOCOL</p>
             </div>
           </div>
         </div>
 
-        {/* GAME OVER TERMINAL */}
-        {gameOver && (
-          <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
-            <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
-            <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">GAME FINISHED</h2>
-            <p className="text-cyan-400 font-bold mb-8 uppercase tracking-widest">Status: Ready to Sent Picture</p>
-
-            <div className="flex flex-col gap-3 w-full max-w-[320px]">
-              <button
-                onClick={handleSentPicture}
-                disabled={isSubmittingTx}
-                className="w-full py-5 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_50px_rgba(255,42,117,0.5)] transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-widest text-xl"
-              >
-                <Send size={24} /> SENT PICTURE
-              </button>
-
-              {lastTxHash && (
-                <a
-                  href={`https://explorer.shelby.xyz/transaction/${lastTxHash}`}
-                  target="_blank"
-                  className="mt-2 text-[10px] text-cyan-400 font-black underline uppercase flex items-center justify-center gap-2 hover:text-white transition-colors"
-                >
-                  <ExternalLink size={12} /> View on Shelby Explorer
-                </a>
-              )}
-
-              <button
-                onClick={() => initGame()}
-                className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline underline-offset-8"
-              >
-                Start New Session
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* RANKING LIST */}
-        {showRanking && (
-          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-2xl relative flex flex-col max-h-[80vh]">
-              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#16161f] rounded-t-3xl text-indigo-400">
-                <Globe />
-                <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white">Global Ranking</h3>
-                <button onClick={() => setShowRanking(false)} className="p-2 text-white/20 hover:text-white"><X /></button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="flex flex-col gap-2">
-                  {leaderboard.map((item, i) => (
-                    <div key={i} className="flex justify-between items-center p-4 bg-[#16161f] rounded-2xl border border-white/5">
-                      <div className="flex items-center gap-4">
-                        <span className="text-gray-600 font-black">{i + 1}</span>
-                        <div className="flex flex-col text-left">
-                          <span className="font-black text-sm text-gray-200 uppercase">{item.name}</span>
-                          <span className="text-[9px] text-indigo-400 font-bold">{item.time}s Speedrun</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-black text-[#ff2a75]">{item.score}</span>
-                        <p className="text-[7px] text-gray-600 font-bold uppercase tracking-widest">Points</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <footer className="text-center opacity-30 mt-auto py-6">
-          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.PROTOCOL.MASTER.V3</p>
+          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.FULL.SESSION.CAPTURE</p>
         </footer>
       </div>
+
+      {/* GAME OVER TERMINAL (Kept outside main capture zone for cleaner screenshot control if needed, 
+          but handleSentPicture captures main-capture-zone wrapper) */}
+      {gameOver && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
+          <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
+          <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
+          <p className="text-cyan-400 font-bold mb-8 uppercase tracking-widest">Status: Ready to Sent Full Picture</p>
+
+          <div className="flex flex-col gap-3 w-full max-w-[320px]">
+            <button
+              onClick={handleSentPicture}
+              disabled={isSubmittingTx}
+              className="w-full py-5 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_50px_rgba(255,42,117,0.5)] transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-widest text-xl"
+            >
+              <Send size={24} /> SENT PICTURE
+            </button>
+
+            {lastTxHash && (
+              <a
+                href={`https://explorer.shelby.xyz/transaction/${lastTxHash}`}
+                target="_blank"
+                className="mt-2 text-[10px] text-cyan-400 font-black underline uppercase flex items-center justify-center gap-2 hover:text-white transition-colors"
+              >
+                <ExternalLink size={12} /> View On Shelby Explorer
+              </a>
+            )}
+
+            <button
+              onClick={() => initGame()}
+              className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline underline-offset-8"
+            >
+              Start New Session
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* RANKING LIST */}
+      {showRanking && (
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-2xl relative flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#16161f] rounded-t-3xl text-indigo-400">
+              <Globe />
+              <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white">Global Ranking</h3>
+              <button onClick={() => setShowRanking(false)} className="p-2 text-white/20 hover:text-white"><X /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex flex-col gap-2">
+                {leaderboard.map((item, i) => (
+                  <div key={i} className="flex justify-between items-center p-4 bg-[#16161f] rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-600 font-black">{i + 1}</span>
+                      <div className="flex flex-col text-left">
+                        <span className="font-black text-sm text-gray-200 uppercase">{item.name}</span>
+                        <span className="text-[9px] text-indigo-400 font-bold">{item.time}s Speedrun</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-black text-[#ff2a75]">{item.score}</span>
+                      <p className="text-[7px] text-gray-600 font-bold uppercase tracking-widest">Points</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
