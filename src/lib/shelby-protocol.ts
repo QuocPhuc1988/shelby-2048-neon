@@ -1,11 +1,5 @@
 /**
  * Shelby Protocol - Official SDK Integration (v2.1)
- * 
- * Final Alignment for Shelbynet (Chain ID 113)
- * 
- * 1. Ledger RPC: https://api.shelbynet.shelby.xyz/v1
- * 2. Storage RPC: https://api.testnet.shelby.xyz/shelby (Aligned with user logs)
- * 3. Auth: Using public key verified from Explorer traffic.
  */
 
 import {
@@ -17,19 +11,23 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- FINAL ALIGNED ENDPOINTS ---
+// --- CẤU HÌNH ĐÃ ĐƯỢC CĂN CHỈNH ---
 const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
-const SHELBY_STORAGE_RPC = "https://api.testnet.shelby.xyz/shelby"; // Aligned with your console logs
-const PUBLIC_API_KEY = "bot_MvDFn3HiLtt_8xW1AaE1KfnzhC4gzzv7GZHDVNu242QGB";
+const SHELBY_STORAGE_RPC = "https://api.testnet.shelby.xyz/shelby"; 
 
-// Shelby SDK Config
+// LẤY CHÌA KHÓA TỪ VERCEL (Không dùng chìa khóa dự phòng bị hỏng)
+const API_KEY = process.env.NEXT_PUBLIC_SHELBY_API_KEY;
+
+if (!API_KEY) {
+    console.error("CRITICAL ERROR: Không tìm thấy NEXT_PUBLIC_SHELBY_API_KEY trên Vercel!");
+}
+
 const shelbyConfig: any = {
     network: Network.TESTNET,
     rpcUrl: SHELBY_STORAGE_RPC,
-    apiKey: process.env.NEXT_PUBLIC_SHELBY_API_KEY || PUBLIC_API_KEY,
+    apiKey: API_KEY, // Chỉ dùng chìa khóa từ biến môi trường
 };
 
-// Aptos SDK Config
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
     fullnode: SHELBY_LEDGER_RPC,
@@ -49,14 +47,14 @@ export async function submitVerifiedPicture(
     try {
         const fileName = `${nickname.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}_${score}.${format}`;
 
-        console.log(`[Shelby Sync] Encoding ${fileName}...`);
+        console.log(`[Shelby Sync] Đang mã hóa ${fileName}...`);
         const arrayBuffer = await imageBlob.arrayBuffer();
         const data = new Uint8Array(arrayBuffer);
 
         const provider = await createDefaultErasureCodingProvider();
         const commitments = await generateCommitments(provider, data);
 
-        console.log(`[Shelby Sync] Registering on-chain (Chain ID 113)...`);
+        console.log(`[Shelby Sync] Đăng ký trên chuỗi (Chain ID 113)...`);
         const expirationMicros = (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000;
 
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
@@ -69,31 +67,26 @@ export async function submitVerifiedPicture(
             encoding: 0,
         });
 
+        // Bước 1: Ký ví xác nhận (Ví sẽ hiện popup)
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        try {
-            console.log(`[Shelby Sync] Waiting for confirmation...`);
-            await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
-            console.log(`[Shelby Sync] Tx Confirmed!`);
-        } catch (e) {
-            console.warn("[Shelby Sync] Ledger wait timed out, attempting RPC upload anyway...");
-        }
-
-        // --- THE FIX: RPC UPLOAD ---
-        console.log(`[Shelby Sync] Uploading to Storage RPC: ${SHELBY_STORAGE_RPC}`);
+        console.log(`[Shelby Sync] Đang chờ xác nhận giao dịch...`);
+        await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
+        
+        // Bước 2: Đẩy dữ liệu vào kho lưu trữ (Đây là chỗ hay lỗi 401)
+        console.log(`[Shelby Sync] Đang đẩy dữ liệu vào kho: ${SHELBY_STORAGE_RPC}`);
         await shelbyClient.rpc.putBlob({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
             blobData: data,
         });
 
-        console.log(`[Shelby Sync] Success! Picture should be available on Shelby Explorer.`);
+        console.log(`[Shelby Sync] Thành công rực rỡ!`);
         return transactionResponse;
     } catch (error: any) {
         console.error("[Shelby Error Detail]:", error);
-        // Better error message for UI
-        if (error.message?.includes("401") || error.message?.includes("Unauthorized")) {
-            throw new Error("Lỗi xác thực (401): API Key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại cấu hình hoặc thử lại sau.");
+        if (error.message?.includes("401")) {
+            throw new Error("Lỗi 401: Chìa khóa API trên Vercel của ông bị sai hoặc chưa được kích hoạt.");
         }
         throw error;
     }
