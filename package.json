@@ -37,5 +37,10 @@
     "postcss": "^8",
     "tailwindcss": "3.4.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@telegram-apps/types": "@tma.js/types",
+    "@telegram-apps/transformers": "@tma.js/transformers",
+    "@telegram-apps/bridge": "@tma.js/bridge"
   }
 }
