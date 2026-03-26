@@ -1,8 +1,10 @@
 /**
  * Shelby Protocol - Official SDK Integration (v2.0)
  * 
- * Reconfigured for Shelbynet RPC (Chain ID 113)
- * This resolves the "Transaction Not Found" 404 error on standard Labs nodes.
+ * Final Ground Truth Configuration (Post-Research):
+ * 1. Ledger RPC: https://api.shelbynet.shelby.xyz/v1 (Chain ID 113)
+ * 2. Blob/Storage RPC: https://api.shelbynet.shelby.xyz/shelby
+ * 3. Public Auth Token: AG-5Y2LDN4FNNRETSQRMS9VQRFFOKVHSRZ6J
  */
 
 import {
@@ -14,20 +16,22 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- CONFIGURATION ---
-const SHELBY_RPC = "https://api.shelbynet.shelby.xyz/v1";
+// --- GROUND TRUTH ENDPOINTS ---
+const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
+const SHELBY_STORAGE_RPC = "https://api.shelbynet.shelby.xyz/shelby";
+const PUBLIC_API_KEY = "AG-5Y2LDN4FNNRETSQRMS9VQRFFOKVHSRZ6J";
 
-// Shelby SDK Config
+// Shelby SDK Config (For Blobs & Storage)
 const shelbyConfig: any = {
-    network: Network.TESTNET, // Or Network.CUSTOM if supported
-    rpcUrl: SHELBY_RPC,
-    apiKey: process.env.NEXT_PUBLIC_SHELBY_API_KEY || "shelbynet_free_access",
+    network: Network.TESTNET,
+    rpcUrl: SHELBY_STORAGE_RPC,
+    apiKey: process.env.NEXT_PUBLIC_SHELBY_API_KEY || PUBLIC_API_KEY,
 };
 
-// Aptos SDK Config (Standard Ledger Sync)
+// Aptos SDK Config (For Transactions & Ledger Sync)
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
-    fullnode: SHELBY_RPC, // Force use of Shelbynet RPC
+    fullnode: SHELBY_LEDGER_RPC,
 });
 
 // Initialize clients
@@ -70,24 +74,25 @@ export async function submitVerifiedPicture(
         console.log(`[Shelby SDK] Signing and submitting transaction...`);
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        // --- STEP 2.1: WAIT ON SHELBY RPC ---
+        // Wait for blockchain confirmation on CUSTOM RPC
         try {
-            console.log(`[Shelby SDK] Waiting on Shelbynet (${transactionResponse.hash})...`);
+            console.log(`[Shelby SDK] Waiting for ledger sync (${transactionResponse.hash})...`);
             await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
             console.log(`[Shelby SDK] Transaction confirmed!`);
         } catch (waitError: any) {
-            console.warn("[Shelby SDK] Wait failed, check explorer but continuing to RPC upload...");
+            console.warn("[Shelby SDK] Wait failed (likely indexing delay), continuing to upload...");
         }
 
         // --- STEP 3: RPC UPLOAD ---
-        console.log(`[Shelby SDK] Uploading blob bytes to Shelby RPC...`);
+        // Using the corrected Storage RPC and Public API Key
+        console.log(`[Shelby SDK] Synchronizing blob bytes to indexer...`);
         await shelbyClient.rpc.putBlob({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
             blobData: data,
         });
 
-        console.log(`[Shelby SDK] Sync Complete. Record is live.`);
+        console.log(`[Shelby SDK] Sync Complete. Explorer Preview should be active.`);
         return transactionResponse;
     } catch (error: any) {
         console.error("[Shelby SDK Error]:", error);
