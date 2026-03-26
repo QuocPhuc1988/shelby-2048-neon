@@ -1,89 +1,95 @@
 /**
- * Shelby Protocol - Verified Picture Submission (Sync Serialization Fix)
+ * Shelby Protocol - Official SDK Integration (v2.0)
  * 
- * Flow for Explorer Preview:
- * 1. Register Metadata on Aptos Node (register_blob).
- * 2. Upload actual Blob Bytes to Shelby Storage Node (api.shelbynet.shelby.xyz).
+ * This implementation follows the official 'Uploading a File' guide:
+ * https://docs.shelby.xyz/sdks/typescript/browser/guides/upload
+ * 
+ * Flow:
+ * 1. File Encoding (Clay n=16 k=10)
+ * 2. On-Chain Metadata Registration (register_blob via SDK payload)
+ * 3. RPC Multipart Upload (putBlob)
  */
 
-export const SHELBY_ADDRESS = "0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a";
-export const SHELBY_API_ENDPOINT = "https://api.shelbynet.shelby.xyz/v1/blobs";
+import {
+    ShelbyClient,
+    ShelbyBlobClient,
+    createDefaultErasureCodingProvider,
+    generateCommitments,
+    expectedTotalChunksets
+} from "@shelby-protocol/sdk/browser";
+import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-/**
- * Helper to convert Uint8Array to Hex string (standard for commitments)
- */
-function toHex(array: Uint8Array): string {
-    return Array.from(array)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-}
+// Client Configuration
+const config: any = {
+    network: Network.TESTNET,
+    apiKey: process.env.NEXT_PUBLIC_SHELBY_API_KEY || "shelbynet_free_access", // Optional API Key
+};
+
+// Initialize clients
+const shelbyClient = new ShelbyClient(config);
+const aptosClient = new Aptos(new AptosConfig({ network: Network.TESTNET }));
 
 export async function submitVerifiedPicture(
     signAndSubmitTransaction: any,
+    accountAddress: string,
     nickname: string,
     score: number,
     imageBlob: Blob,
     format: 'png' | 'jpg'
 ) {
     try {
-        // 1. Calculate SHA-256 Binary Hash
+        const fileName = `${nickname.replace(/[^a-z0-9]/gi, '_')}_${score}.${format}`;
+
+        // --- STEP 1: FILE ENCODING ---
+        console.log(`[Shelby SDK] Encoding file: ${fileName}...`);
         const arrayBuffer = await imageBlob.arrayBuffer();
-        const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-        const commitment = new Uint8Array(hashBuffer);
-        const commitmentHex = toHex(commitment);
+        const data = new Uint8Array(arrayBuffer);
 
-        // Expiration: 30 days (Microseconds)
-        const expirationUs = (Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60)) * 1000000;
+        // Use default Clay (n=16, k=10) provider
+        const provider = await createDefaultErasureCodingProvider();
+        const commitments = await generateCommitments(provider, data);
 
-        const safeName = nickname.replace(/[^a-z0-9]/gi, '_');
-        const p1_name = `${safeName}_${score}.${format}`;
+        // --- STEP 2: ON-CHAIN REGISTRATION ---
+        console.log(`[Shelby SDK] Creating registration payload...`);
+        const expirationMicros = (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000; // 30 days
 
-        // 2. STEP 1: Register Metadata on-chain
-        console.log(`[Shelby] Registering metadata for ${p1_name}...`);
-        const payload = {
-            data: {
-                function: `${SHELBY_ADDRESS}::blob_metadata::register_blob`,
-                typeArguments: [],
-                functionArguments: [
-                    p1_name,
-                    expirationUs.toString(),
-                    Array.from(commitment), // Blockchain expects Array of numbers
-                    1,
-                    imageBlob.size.toString(),
-                    0,
-                    0
-                ],
-            }
-        };
-
-        const txResponse = await signAndSubmitTransaction(payload);
-
-        // 3. STEP 2: MANDATORY UPLOAD to Shelby API
-        // We use Hex serialization for the commitment header to match Merkle Root indexing
-        console.log(`[Shelby] Uploading blob bytes to indexer...`);
-        const uploadResponse = await fetch(SHELBY_API_ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/octet-stream',
-                'X-Shelby-Blob-Id': p1_name,
-                'X-Shelby-Commitment': `0x${commitmentHex}` // Added 0x prefix to match Merkle Root
-            },
-            body: imageBlob
+        const payload = ShelbyBlobClient.createRegisterBlobPayload({
+            account: AccountAddress.from(accountAddress),
+            blobName: fileName,
+            blobMerkleRoot: commitments.blob_merkle_root,
+            numChunksets: expectedTotalChunksets(commitments.raw_data_size),
+            expirationMicros: expirationMicros,
+            blobSize: commitments.raw_data_size,
+            encoding: 0, // 0 = Clay (standard)
         });
 
-        if (!uploadResponse.ok) {
-            const errorText = await uploadResponse.text();
-            throw new Error(`Sync Upload failed: ${uploadResponse.status} ${errorText}`);
-        }
+        // Use the wallet to sign and submit
+        console.log(`[Shelby SDK] Signing and submitting transaction...`);
+        const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        console.log(`[Shelby] Sync Complete. Explorer Preview should be active.`);
-        return txResponse;
-    } catch (error) {
-        console.error("[Shelby Verified Picture] Protocol Error:", error);
+        // Wait for blockchain confirmation
+        await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
+        console.log(`[Shelby SDK] Transaction confirmed: ${transactionResponse.hash}`);
+
+        // --- STEP 3: RPC UPLOAD ---
+        console.log(`[Shelby SDK] Uploading blob bytes via RPC...`);
+        await shelbyClient.rpc.putBlob({
+            account: transactionResponse.sender, // The andress from the tx response
+            blobName: fileName,
+            blobData: data,
+        });
+
+        console.log(`[Shelby SDK] Sync Complete. Explorer Preview and Status should be Available.`);
+        return transactionResponse;
+    } catch (error: any) {
+        console.error("[Shelby SDK Error]:", error);
         throw error;
     }
 }
 
+/**
+ * Mock Leaderboard (Replace with an indexer query in production)
+ */
 export async function fetchLeaderboard() {
     return [
         { nickname: "SpeedRunner_99", score: 32768, time: 180, address: "0x5ae...bb15", timestamp: Date.now() },

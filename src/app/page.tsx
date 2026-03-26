@@ -90,6 +90,7 @@ export default function Home() {
         try {
           const response = await submitVerifiedPicture(
             signAndSubmitTransaction,
+            account!.address.toString(),
             nickname || 'Anony',
             score,
             blob,
