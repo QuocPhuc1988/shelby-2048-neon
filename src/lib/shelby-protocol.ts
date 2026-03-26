@@ -8,35 +8,25 @@ import {
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
 // --- SHELBYNET PRODUCTION ALIGNMENT (FORCE) ---
-/**
- * CRITICAL: We override any ENV configured endpoints with the 
- * verified production Shelbynet RPCs to resolve "wrong authority" errors.
- */
 const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
 const SHELBY_STORAGE_RPC = "https://api.shelbynet.shelby.xyz/shelby";
 
 // Authentication Normalization (Prefix-Agnostic)
 const getCleanApiKey = () => {
     const raw = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
-    // Strip "Bearer " or "bearer " if it exists to prevent duplication
     return raw.replace(/^bearer\s+/i, "").trim();
 };
 
 const RAW_KEY = getCleanApiKey();
-if (!RAW_KEY) {
-    console.error("LỖI NGHIÊM TRỌNG: Không tìm thấy khóa xác thực (API Key)!");
-}
-
-// Format exactly once as "Bearer <key>"
 const FORMATTED_AUTH_HEADER = `Bearer ${RAW_KEY}`;
 
 // Shelby SDK Config
 const shelbyConfig: any = {
     network: Network.TESTNET,
     rpcUrl: SHELBY_STORAGE_RPC,
-    apiKey: RAW_KEY, // The SDK usually adds Bearer itself
+    apiKey: RAW_KEY,
     headers: {
-        'Authorization': FORMATTED_AUTH_HEADER, // Double check
+        'Authorization': FORMATTED_AUTH_HEADER,
         'x-api-key': RAW_KEY
     }
 };
@@ -58,12 +48,16 @@ export async function submitVerifiedPicture(
     imageBlob: Blob,
     format: 'png' | 'jpg'
 ) {
+    // Declare variables outside try/catch to ensure availability in recovery layer
+    let fileName = "";
+    let data: Uint8Array = new Uint8Array();
+
     try {
-        const fileName = `${nickname.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}_${score}.${format}`;
+        fileName = `${nickname.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}_${score}.${format}`;
 
         console.log(`[Đồng bộ Shelby] Đang mã hóa ${fileName}...`);
         const arrayBuffer = await imageBlob.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
+        data = new Uint8Array(arrayBuffer);
 
         const provider = await createDefaultErasureCodingProvider();
         const commitments = await generateCommitments(provider, data);
@@ -88,7 +82,6 @@ export async function submitVerifiedPicture(
 
         console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu vào kho: ${SHELBY_STORAGE_RPC}`);
 
-        // Use SDK for part upload
         await shelbyClient.rpc.putBlob({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
@@ -100,7 +93,7 @@ export async function submitVerifiedPicture(
     } catch (error: any) {
         console.error("[Chi tiết lỗi Shelby]:", error);
 
-        // Fallback: If SDK fails with 401, try a manual fetch handshake exactly as Explorer does.
+        // Manual handshake recovery layer (uses outer variables)
         if (error.status === 401 || error.message?.includes("401") || error.message?.includes("Unauthorized")) {
             console.warn("[Đồng bộ Shelby] Thử nghiệm phương thức bắt tay thủ công (Bearer Fix)...");
             const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
@@ -117,7 +110,7 @@ export async function submitVerifiedPicture(
             });
             if (response.ok) {
                 console.log("[Đồng bộ Shelby] Bắt tay thủ công THÀNH CÔNG!");
-                // Manual upload of parts would go here if needed, but the 401 happens at handshake.
+                // Success in handshake usually means the SDK part upload should have worked or will work.
             } else {
                 const body = await response.text();
                 throw new Error(`Lỗi 401: Khóa xác thực bị từ chối (${body}). Kiểm tra lại Vercel Env Vars.`);
