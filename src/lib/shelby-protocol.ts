@@ -25,7 +25,7 @@ if (!API_KEY) {
 
 const shelbyConfig: any = {
     network: Network.shelbynet,
-    rpcUrl: https://api.shelbynet.shelby.xyz/shelby,
+    rpcUrl: SHELBY_STORAGE_RPC,
     apiKey: API_KEY, // Chỉ dùng chìa khóa từ biến môi trường
 };
 
