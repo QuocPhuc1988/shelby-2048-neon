@@ -24,13 +24,13 @@ if (!API_KEY) {
 }
 
 const shelbyConfig: any = {
-    network: Network.TESTNET,
-    rpcUrl: SHELBY_STORAGE_RPC,
+    network: Network.shelbynet,
+    rpcUrl: https://api.shelbynet.shelby.xyz/shelby,
     apiKey: API_KEY, // Chỉ dùng chìa khóa từ biến môi trường
 };
 
 const aptosConfig = new AptosConfig({
-    network: Network.TESTNET,
+    network: Network.shelbynet,
     fullnode: SHELBY_LEDGER_RPC,
 });
 
