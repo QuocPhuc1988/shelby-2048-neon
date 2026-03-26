@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import GameBoard from '@/components/GameBoard';
 import WalletSelector from '@/components/WalletSelector';
-import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink, Camera, Timer, User, Image as ImageIcon, CheckCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Trophy, RefreshCw, Zap, Send, Globe, X, ExternalLink, Camera, Timer, User, Image as ImageIcon, CheckCircle, ShieldCheck, AlertTriangle, Loader2 } from 'lucide-react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { submitVerifiedPicture, fetchLeaderboard } from '@/lib/shelby-protocol';
 import html2canvas from 'html2canvas';
@@ -14,8 +14,11 @@ export default function Home() {
   const { connected, account, signAndSubmitTransaction } = useWallet();
   const [hasMounted, setHasMounted] = useState(false);
   const [nickname, setNickname] = useState('Anony_Shelby');
-  const [isSubmittingTx, setIsSubmittingTx] = useState(false);
+
+  // SYNC STATES
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'capturing' | 'signing' | 'uploading' | 'success' | 'error'>('idle');
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+
   const [showRanking, setShowRanking] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -44,20 +47,20 @@ export default function Home() {
 
   const handleConsentAgree = () => {
     setShowConsent(false);
-    executeCaptureAndSubmit();
+    executeVerifiedSubmission();
   };
 
-  const executeCaptureAndSubmit = async () => {
-    if (!connected || !account || isSubmittingTx) return;
-    setIsSubmittingTx(true);
+  const executeVerifiedSubmission = async () => {
+    if (!connected || !account || syncStatus !== 'idle') return;
+
+    setSyncStatus('capturing');
     try {
-      // Show Verification Certificate before capture
+      // 1. CAPTURE PHASE
       if (certificateRef.current) {
         certificateRef.current.style.opacity = '1';
         certificateRef.current.style.visibility = 'visible';
       }
 
-      // Capture 'document.body' for genuine 'Screen Hot' context
       const element = document.body;
       const canvas = await html2canvas(element, {
         backgroundColor: '#060608',
@@ -68,7 +71,6 @@ export default function Home() {
         width: window.innerWidth, height: window.innerHeight
       });
 
-      // Hide Certificate after capture
       if (certificateRef.current) {
         certificateRef.current.style.opacity = '0';
         certificateRef.current.style.visibility = 'hidden';
@@ -78,28 +80,34 @@ export default function Home() {
       const extension = fileFormat === 'image/png' ? 'png' : 'jpg';
 
       canvas.toBlob(async (blob: Blob | null) => {
-        if (blob) {
-          try {
-            const response = await submitVerifiedPicture(
-              signAndSubmitTransaction,
-              nickname || 'Anony',
-              score,
-              blob,
-              extension as any
-            );
-            setLastTxHash(response.hash);
-            console.log("Verified Picture Submitted! TX:", response.hash);
-          } catch (txError) {
-            console.error("Protocol submission failed", txError);
-            setIsSubmittingTx(false);
-          }
-        } else {
-          setIsSubmittingTx(false);
+        if (!blob) {
+          setSyncStatus('error');
+          return;
+        }
+
+        // 2. SIGNING PHASE
+        setSyncStatus('signing');
+        try {
+          const response = await submitVerifiedPicture(
+            signAndSubmitTransaction,
+            nickname || 'Anony',
+            score,
+            blob,
+            extension as any
+          );
+          setLastTxHash(response.hash);
+
+          // 3. SUCCESS
+          setSyncStatus('success');
+          console.log("Verified Picture Synced! TX:", response.hash);
+        } catch (txError) {
+          console.error("Submission failed", txError);
+          setSyncStatus('idle'); // Allow retry
         }
       }, fileFormat, quality);
     } catch (e: any) {
-      console.error("Capture Logic failed", e);
-      setIsSubmittingTx(false);
+      console.error("Sync flow failed", e);
+      setSyncStatus('error');
     }
   };
 
@@ -138,26 +146,26 @@ export default function Home() {
     >
       <div id="main-capture-zone" className="w-full max-w-[500px] flex flex-col gap-6 items-center p-4 bg-[#060608] relative">
 
-        {/* Branding */}
+        {/* Branding & Wallet */}
         <div className="w-full flex justify-between items-start">
           <div className="flex flex-col">
             <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-[#ff2a75] drop-shadow-[0_0_20px_rgba(255,42,117,1)]">
-              2048 <span className="text-white text-3xl">🧩</span>
+              2048 <span className="text-white text-3xl">🛡️</span>
             </h1>
             <p className="text-[10px] font-bold tracking-[0.3em] text-cyan-400 uppercase italic">
-              VERIFIED PICTURE SYSTEM
+              SHELBY CORE ENGINE
             </p>
           </div>
           <WalletSelector />
         </div>
 
-        {/* Identity Plate */}
+        {/* Player Plate */}
         <div className="w-full bg-[#111116] p-4 rounded-2xl border border-white/5 flex items-center gap-4">
           <div className="p-3 bg-indigo-500/10 rounded-xl text-indigo-400">
             <User size={20} />
           </div>
           <div className="flex flex-col flex-1">
-            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Player Identity</span>
+            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Speedrun Identity</span>
             <input
               type="text"
               value={nickname}
@@ -168,76 +176,76 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Live Metrics */}
-        <div className="w-full flex justify-between items-center bg-[#111116] p-4 rounded-2xl border border-white/5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-1 opacity-20"><Zap size={40} className="text-[#ff2a75]" /></div>
-          <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Session Score</span>
-            <span className="text-2xl font-black text-white">{score.toLocaleString()}</span>
+        {/* Metrics Board */}
+        <div className="w-full grid grid-cols-2 gap-4">
+          <div className="bg-[#111116] p-4 rounded-2xl border border-white/5 flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-1 opacity-10"><Zap size={40} className="text-[#ff2a75]" /></div>
+            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1 italic">Final Score</span>
+            <span className="text-3xl font-black text-white">{score.toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1"><Timer size={10} /> Live</span>
-            <span className="text-2xl font-black text-white tabular-nums">{totalTime}s</span>
+          <div className="bg-[#111116] p-4 rounded-2xl border border-white/5 flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-1 opacity-10"><Timer size={40} className="text-cyan-400" /></div>
+            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1 italic">Total Time</span>
+            <span className="text-3xl font-black text-cyan-400 tabular-nums">{totalTime}s</span>
           </div>
         </div>
 
         <GameBoard />
 
         <footer className="text-center opacity-30 mt-auto py-6">
-          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800">SHELBY.PROTOCOL.MASTER.V5</p>
+          <p className="text-[8px] font-black tracking-[0.5em] uppercase text-gray-800 italic">SHELBY.VERIFIED.RUN.V6</p>
         </footer>
       </div>
 
-      {/* FULL PAGE VERIFIED CERTIFICATE (Overlay during capture only) */}
+      {/* FULL PAGE DYNAMIC CERTIFICATE (Capture Overlay) */}
       <div
         ref={certificateRef}
-        className="fixed inset-0 z-[999] bg-black/98 backdrop-blur-2xl pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-12 border-[24px] border-[#ff2a75]"
+        className="fixed inset-0 z-[999] bg-black/98 backdrop-blur-2xl pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-12 border-[24px] border-[#ff2a75] text-center"
       >
         <Trophy size={140} className="text-[#ff2a75] mb-8" />
-        <h2 className="text-7xl font-black text-white italic tracking-tighter mb-16 uppercase text-center drop-shadow-[0_0_30px_rgba(255,42,117,1)]">OFFICIAL RECORD</h2>
+        <h2 className="text-7xl font-black text-white italic tracking-tighter mb-16 uppercase drop-shadow-[0_0_30px_rgba(255,42,117,1)]">SHELBYNET OFFICAL RUN</h2>
 
         <div className="w-full max-w-[900px] border-y-4 border-white/10 py-16 mb-16 space-y-12">
-          <div className="grid grid-cols-2 text-left">
+          <div className="flex justify-between text-left">
             <div>
-              <p className="text-sm text-gray-500 uppercase font-black tracking-[0.6em] mb-4">Player Master</p>
-              <p className="text-6xl font-black text-white uppercase">{nickname}</p>
+              <p className="text-xs text-gray-500 uppercase font-black tracking-[0.6em] mb-4">Player Master</p>
+              <p className="text-5xl font-black text-white uppercase">{nickname}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-500 uppercase font-black tracking-[0.6em] mb-4">Run Stats</p>
-              <p className="text-2xl font-black text-cyan-400 tabular-nums">SCORE: {score} | TIME: {totalTime}s</p>
+              <p className="text-xs text-gray-500 uppercase font-black tracking-[0.6em] mb-4">On-chain Proof</p>
+              <p className="text-2xl font-black text-cyan-400 tabular-nums uppercase whitespace-nowrap">SCORE: {score} | TIME: {totalTime}S</p>
             </div>
           </div>
 
-          {/* MANDATORY IDENTITY WATERMARK */}
           <div className="text-center pt-8 border-t border-white/5">
-            <p className="text-2xl font-black text-white uppercase tracking-widest">
-              Player: <span className="text-[#ff2a75]">{nickname}</span> | Wallet: <span className="text-cyan-400">{account?.address?.toString()}</span>
+            <p className="text-2xl font-black text-white uppercase tracking-widest italic opacity-80 underline underline-offset-8 decoration-cyan-500">
+              Player: {nickname} | Wallet: {account?.address?.toString()}
             </p>
           </div>
         </div>
 
-        <p className="text-sm font-black text-gray-600 tracking-[1.5em] uppercase italic opacity-50">VERIFIED ON SHELBY PROTOCOL</p>
+        <p className="text-sm font-black text-gray-600 tracking-[1.5em] uppercase italic opacity-50">CRYPTOGRAPHICALLY VERIFIED ON SHELBY PROTOCOL</p>
       </div>
 
       {/* GAME OVER TERMINAL */}
       {gameOver && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
-          {lastTxHash ? (
-            <div className="flex flex-col items-center">
-              <ShieldCheck size={100} className="text-green-500 mb-6 animate-bounce" />
-              <h2 className="text-5xl font-black text-white uppercase italic tracking-tighter mb-2">RUN RECORDED</h2>
-              <p className="text-gray-400 font-bold mb-8">Asset verified on Shelbynet.</p>
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500 overflow-y-auto">
+          {syncStatus === 'success' ? (
+            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700">
+              <ShieldCheck size={120} className="text-green-500 mb-6 drop-shadow-[0_0_30px_rgba(34,197,94,0.5)]" />
+              <h2 className="text-6xl font-black text-white uppercase italic tracking-tighter mb-2">RUN SYNCED</h2>
+              <p className="text-gray-400 font-bold mb-10 text-lg uppercase tracking-widest">Asset Identified on Shelbynet</p>
             </div>
           ) : (
             <>
               <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
-              <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase font-black">GAME FINISHED</h2>
-              <p className="text-cyan-400 font-bold mb-8 uppercase tracking-widest">Ready to Capture Session</p>
+              <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
+              <p className="text-cyan-400 font-bold mb-10 uppercase tracking-widest">Archive Certified Image</p>
             </>
           )}
 
-          {!lastTxHash && (
-            <div className="flex gap-4 mb-10 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[320px]">
+          {syncStatus === 'idle' && (
+            <div className="flex gap-4 mb-10 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[350px]">
               <button
                 onClick={() => setFileFormat('image/png')}
                 className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/png' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,1)]' : 'bg-white/5 text-gray-500'}`}
@@ -253,57 +261,70 @@ export default function Home() {
             </div>
           )}
 
-          <div className="flex flex-col gap-3 w-full max-w-[320px]">
-            {!lastTxHash ? (
+          <div className="flex flex-col gap-3 w-full max-w-[340px]">
+            {syncStatus === 'idle' ? (
               <button
                 onClick={() => setShowConsent(true)}
-                disabled={isSubmittingTx}
-                className="w-full py-6 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_60px_rgba(255,42,117,0.6)] transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-widest text-xl group"
+                className="w-full py-6 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_60px_rgba(255,42,117,0.6)] transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-widest text-xl group"
               >
-                <Send size={24} className={isSubmittingTx ? 'animate-ping' : 'group-hover:translate-x-1 transition-transform'} />
-                {isSubmittingTx ? 'RECORDING...' : 'SENT PICTURE'}
+                <Send size={24} className="group-hover:translate-x-1 transition-transform" /> SENT PICTURE
               </button>
-            ) : (
+            ) : syncStatus === 'success' ? (
               <a
                 href={`https://explorer.shelby.xyz/transaction/${lastTxHash}`}
                 target="_blank"
-                className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border border-green-500/30 flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xl"
+                className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl"
               >
-                <ExternalLink size={24} /> VIEW IMAGE ON EXPLORER
+                <ExternalLink size={24} /> VIEW ON EXPLORER
               </a>
+            ) : (
+              <button
+                disabled
+                className="w-full py-6 bg-[#111116] text-[#ff2a75] font-black rounded-xl border border-white/5 flex items-center justify-center gap-4 uppercase tracking-widest text-xl cursor-wait"
+              >
+                <Loader2 size={24} className="animate-spin" /> {syncStatus.toUpperCase()}ING...
+              </button>
             )}
 
             <button
-              onClick={() => { setLastTxHash(null); setIsSubmittingTx(false); initGame(); }}
-              className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline outline-offset-8"
+              onClick={() => { setLastTxHash(null); setSyncStatus('idle'); initGame(); }}
+              className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline underline-offset-8"
             >
-              Reset Session
+              Reset Speedrun
             </button>
           </div>
         </div>
       )}
 
-      {/* CONSENT MODAL (Mandatory Consent Flow) */}
+      {/* CONSENT MODAL (Sync UI Ported from External Build) */}
       {showConsent && (
-        <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
-          <div className="bg-[#111116] w-full max-w-[350px] p-8 rounded-3xl border border-white/10 shadow-3xl text-center flex flex-col items-center">
-            <AlertTriangle size={60} className="text-yellow-500 mb-6" />
-            <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter mb-4">Submission Consent</h3>
-            <p className="text-gray-400 font-bold text-sm mb-8 leading-relaxed">
-              Bạn có đồng ý chụp ảnh màn hình kết quả và sao lưu lên Shelby Protocol không?
-            </p>
-            <div className="flex flex-col gap-3 w-full">
-              <button
-                onClick={handleConsentAgree}
-                className="w-full py-4 bg-[#ff2a75] text-white font-black rounded-xl uppercase tracking-widest shadow-[0_0_20px_rgba(255,42,117,0.4)] active:scale-95 transition-all"
-              >
-                AGREE
-              </button>
+        <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
+          <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-3xl text-left flex flex-col overflow-hidden animate-in zoom-in duration-300">
+            <div className="p-8 pb-4">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500">
+                  <AlertTriangle size={32} />
+                </div>
+                <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">Verified Sync</h3>
+              </div>
+              <p className="text-gray-400 font-bold text-base leading-relaxed mb-8">
+                Bạn có đồng ý chụp ảnh màn hình kết quả và sao lưu lên <span className="text-white italic">Shelby Protocol</span> không? Tấm ảnh này sẽ được lưu trữ công khai làm bằng chứng Speedrun.
+              </p>
+            </div>
+
+            {/* UI PORT: DIALOG-FOOTER Style */}
+            <div className="bg-[#16161f] p-6 flex justify-between items-center border-t border-white/5 gap-4">
               <button
                 onClick={() => setShowConsent(false)}
-                className="w-full py-4 bg-white/5 text-gray-500 font-black rounded-xl uppercase tracking-widest hover:text-white active:scale-95 transition-all"
+                className="px-6 py-3 text-gray-500 font-black rounded-xl uppercase tracking-widest hover:text-white transition-all active:scale-95 text-xs"
               >
-                DISAGREE
+                Cancel
+              </button>
+              <button
+                onClick={handleConsentAgree}
+                className="px-10 py-3 bg-[#ff2a75] text-white font-black rounded-xl uppercase tracking-widest shadow-[0_0_20px_rgba(255,42,117,0.4)] active:scale-95 transition-all text-xs"
+              >
+                Upload
               </button>
             </div>
           </div>
@@ -316,10 +337,10 @@ export default function Home() {
           <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-2xl relative flex flex-col max-h-[80vh]">
             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#16161f] rounded-t-3xl text-indigo-400">
               <Globe />
-              <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white">Global Ranking</h3>
+              <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white font-black">Global Global Ranking</h3>
               <button onClick={() => setShowRanking(false)} className="p-2 text-white/20 hover:text-white"><X /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
               <div className="flex flex-col gap-2">
                 {leaderboard.map((item, i) => (
                   <div key={i} className="flex justify-between items-center p-4 bg-[#16161f] rounded-2xl border border-white/5">
