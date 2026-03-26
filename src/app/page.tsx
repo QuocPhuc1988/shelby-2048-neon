@@ -17,6 +17,7 @@ export default function Home() {
 
   // SYNC STATES
   const [syncStatus, setSyncStatus] = useState<'idle' | 'capturing' | 'signing' | 'uploading' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
   const [showRanking, setShowRanking] = useState(false);
@@ -96,14 +97,14 @@ export default function Home() {
             blob,
             extension as any
           );
-          setLastTxHash(response.hash);
-
           // 3. SUCCESS
           setSyncStatus('success');
+          setErrorMessage(null);
           console.log("Verified Picture Synced! TX:", response.hash);
-        } catch (txError) {
+        } catch (txError: any) {
           console.error("Submission failed", txError);
-          setSyncStatus('idle'); // Allow retry
+          setSyncStatus('error');
+          setErrorMessage(txError.message || "Đã có lỗi xảy ra. Vui lòng thử lại.");
         }
       }, fileFormat, quality);
     } catch (e: any) {
@@ -236,6 +237,22 @@ export default function Home() {
               <ShieldCheck size={120} className="text-green-500 mb-6 drop-shadow-[0_0_30px_rgba(34,197,94,0.5)]" />
               <h2 className="text-6xl font-black text-white uppercase italic tracking-tighter mb-2">RUN SYNCED</h2>
               <p className="text-gray-400 font-bold mb-10 text-lg uppercase tracking-widest">Asset Identified on Shelbynet</p>
+            </div>
+          ) : syncStatus === 'error' ? (
+            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700 max-w-[400px]">
+              <AlertTriangle size={80} className="text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.5)]" />
+              <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-4">LỖI ĐỒNG BỘ</h2>
+              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl mb-6">
+                <p className="text-red-400 font-bold text-sm leading-relaxed uppercase tracking-wider">
+                  {errorMessage}
+                </p>
+              </div>
+              <button
+                onClick={() => { setSyncStatus('idle'); setErrorMessage(null); }}
+                className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl border border-white/10 transition-all uppercase tracking-[0.2em] text-xs"
+              >
+                THỬ LẠI
+              </button>
             </div>
           ) : (
             <>

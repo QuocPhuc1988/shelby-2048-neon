@@ -67,9 +67,17 @@ export async function submitVerifiedPicture(
         console.log(`[Shelby SDK] Signing and submitting transaction...`);
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        // Wait for blockchain confirmation
-        await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
-        console.log(`[Shelby SDK] Transaction confirmed: ${transactionResponse.hash}`);
+        // Wait for blockchain confirmation with enhanced error handling
+        try {
+            console.log(`[Shelby SDK] Waiting for confirmation (TX: ${transactionResponse.hash})...`);
+            await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
+            console.log(`[Shelby SDK] Transaction confirmed!`);
+        } catch (waitError: any) {
+            if (waitError.message?.includes("transaction_not_found") || waitError.status === 404) {
+                throw new Error("Giao dịch không tìm thấy. Vui lòng kiểm tra ví của bạn: Bạn cần có APT để trả phí gas và ShelbyUSD để lưu trữ ảnh.");
+            }
+            throw waitError;
+        }
 
         // --- STEP 3: RPC UPLOAD ---
         console.log(`[Shelby SDK] Uploading blob bytes via RPC...`);
