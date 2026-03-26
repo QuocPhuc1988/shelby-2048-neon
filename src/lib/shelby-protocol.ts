@@ -12,8 +12,9 @@ import {
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
 // --- CẤU HÌNH ĐÃ ĐƯỢC CĂN CHỈNH ---
+// --- SỬA LẠI ĐOẠN NÀY CHO ĐỒNG BỘ ---
 const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
-const SHELBY_STORAGE_RPC = "https://api.testnet.shelby.xyz/shelby"; 
+const SHELBY_STORAGE_RPC = "https://api.shelbynet.shelby.xyz/shelby"; // Phải dùng shelbynet mới khớp chìa khóa 
 
 // LẤY CHÌA KHÓA TỪ VERCEL (Không dùng chìa khóa dự phòng bị hỏng)
 const API_KEY = process.env.NEXT_PUBLIC_SHELBY_API_KEY;
