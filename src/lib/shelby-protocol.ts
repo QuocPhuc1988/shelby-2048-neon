@@ -20,7 +20,7 @@ import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk"
 // --- FINAL ALIGNED ENDPOINTS ---
 const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
 const SHELBY_STORAGE_RPC = "https://api.testnet.shelby.xyz/shelby"; // Aligned with your console logs
-const PUBLIC_API_KEY = "AG-5Y2LDN4FNNRETSQRMS9VQRFFOKVHSRZ6J";
+const PUBLIC_API_KEY = "bot_MvDFn3HiLtt_8xW1AaE1KfnzhC4gzzv7GZHDVNu242QGB";
 
 // Shelby SDK Config
 const shelbyConfig: any = {

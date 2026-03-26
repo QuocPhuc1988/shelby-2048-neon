@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "deploy": "powershell -ExecutionPolicy Bypass -File ./shelby-deploy.ps1"
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "5.1.1",
