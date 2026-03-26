@@ -1,10 +1,11 @@
 /**
- * Shelby Protocol - Official SDK Integration (v2.0)
+ * Shelby Protocol - Official SDK Integration (v2.1)
  * 
- * Final Ground Truth Configuration (Post-Research):
- * 1. Ledger RPC: https://api.shelbynet.shelby.xyz/v1 (Chain ID 113)
- * 2. Blob/Storage RPC: https://api.shelbynet.shelby.xyz/shelby
- * 3. Public Auth Token: AG-5Y2LDN4FNNRETSQRMS9VQRFFOKVHSRZ6J
+ * Final Alignment for Shelbynet (Chain ID 113)
+ * 
+ * 1. Ledger RPC: https://api.shelbynet.shelby.xyz/v1
+ * 2. Storage RPC: https://api.testnet.shelby.xyz/shelby (Aligned with user logs)
+ * 3. Auth: Using public key verified from Explorer traffic.
  */
 
 import {
@@ -16,25 +17,24 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- GROUND TRUTH ENDPOINTS ---
+// --- FINAL ALIGNED ENDPOINTS ---
 const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
-const SHELBY_STORAGE_RPC = "https://api.shelbynet.shelby.xyz/shelby";
+const SHELBY_STORAGE_RPC = "https://api.testnet.shelby.xyz/shelby"; // Aligned with your console logs
 const PUBLIC_API_KEY = "AG-5Y2LDN4FNNRETSQRMS9VQRFFOKVHSRZ6J";
 
-// Shelby SDK Config (For Blobs & Storage)
+// Shelby SDK Config
 const shelbyConfig: any = {
     network: Network.TESTNET,
     rpcUrl: SHELBY_STORAGE_RPC,
     apiKey: process.env.NEXT_PUBLIC_SHELBY_API_KEY || PUBLIC_API_KEY,
 };
 
-// Aptos SDK Config (For Transactions & Ledger Sync)
+// Aptos SDK Config
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
     fullnode: SHELBY_LEDGER_RPC,
 });
 
-// Initialize clients
 const shelbyClient = new ShelbyClient(shelbyConfig);
 const aptosClient = new Aptos(aptosConfig);
 
@@ -47,18 +47,16 @@ export async function submitVerifiedPicture(
     format: 'png' | 'jpg'
 ) {
     try {
-        const fileName = `${nickname.replace(/[^a-z0-9]/gi, '_')}_${score}.${format}`;
+        const fileName = `${nickname.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}_${score}.${format}`;
 
-        // --- STEP 1: FILE ENCODING ---
-        console.log(`[Shelby SDK] Encoding file: ${fileName}...`);
+        console.log(`[Shelby Sync] Encoding ${fileName}...`);
         const arrayBuffer = await imageBlob.arrayBuffer();
         const data = new Uint8Array(arrayBuffer);
 
         const provider = await createDefaultErasureCodingProvider();
         const commitments = await generateCommitments(provider, data);
 
-        // --- STEP 2: ON-CHAIN REGISTRATION ---
-        console.log(`[Shelby SDK] Creating registration payload...`);
+        console.log(`[Shelby Sync] Registering on-chain (Chain ID 113)...`);
         const expirationMicros = (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000;
 
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
@@ -71,38 +69,38 @@ export async function submitVerifiedPicture(
             encoding: 0,
         });
 
-        console.log(`[Shelby SDK] Signing and submitting transaction...`);
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        // Wait for blockchain confirmation on CUSTOM RPC
         try {
-            console.log(`[Shelby SDK] Waiting for ledger sync (${transactionResponse.hash})...`);
+            console.log(`[Shelby Sync] Waiting for confirmation...`);
             await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
-            console.log(`[Shelby SDK] Transaction confirmed!`);
-        } catch (waitError: any) {
-            console.warn("[Shelby SDK] Wait failed (likely indexing delay), continuing to upload...");
+            console.log(`[Shelby Sync] Tx Confirmed!`);
+        } catch (e) {
+            console.warn("[Shelby Sync] Ledger wait timed out, attempting RPC upload anyway...");
         }
 
-        // --- STEP 3: RPC UPLOAD ---
-        // Using the corrected Storage RPC and Public API Key
-        console.log(`[Shelby SDK] Synchronizing blob bytes to indexer...`);
+        // --- THE FIX: RPC UPLOAD ---
+        console.log(`[Shelby Sync] Uploading to Storage RPC: ${SHELBY_STORAGE_RPC}`);
         await shelbyClient.rpc.putBlob({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
             blobData: data,
         });
 
-        console.log(`[Shelby SDK] Sync Complete. Explorer Preview should be active.`);
+        console.log(`[Shelby Sync] Success! Picture should be available on Shelby Explorer.`);
         return transactionResponse;
     } catch (error: any) {
-        console.error("[Shelby SDK Error]:", error);
+        console.error("[Shelby Error Detail]:", error);
+        // Better error message for UI
+        if (error.message?.includes("401") || error.message?.includes("Unauthorized")) {
+            throw new Error("Lỗi xác thực (401): API Key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại cấu hình hoặc thử lại sau.");
+        }
         throw error;
     }
 }
 
 export async function fetchLeaderboard() {
     return [
-        { nickname: "SpeedRunner_99", score: 32768, time: 180, address: "0x5ae...bb15", timestamp: Date.now() },
-        { nickname: "Shelby_Ace", score: 16384, time: 210, address: "0x85f...8e6a", timestamp: Date.now() },
-    ].sort((a, b) => b.score - a.score);
+        { nickname: "Player_1", score: 2048, time: 100, address: "0x123", timestamp: Date.now() }
+    ];
 }
