@@ -7,25 +7,28 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-const SHELBY_RPC = "https://api.shelbynet.shelby.xyz/shelby";
-const LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
+// --- SHELBYNET PROTOCOL HYBRID REFINERY (v2.28) ---
+/**
+ * MISSION CRITICAL: Fixed 401 Unauthorized by using Hybrid Manual Fetch for binary upload.
+ */
+const SHELBY_RPC_ROOT = "https://api.testnet.shelby.xyz";
+const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
+const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
 
 const RAW_KEY = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
-// Gỡ sạch rác Bearer nếu có
 const CLEAN_KEY = RAW_KEY.replace(/^Bearer\s+/i, "").trim();
 
-const shelbyConfig: any = {
-    network: Network.TESTNET,
-    rpcUrl: SHELBY_RPC,
-    apiKey: `Bearer ${CLEAN_KEY}`,
+const HEADERS = {
+    'x-api-key': CLEAN_KEY,
+    'Authorization': `Bearer ${CLEAN_KEY}`,
+    'Content-Type': 'application/json'
 };
 
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
-    fullnode: LEDGER_RPC,
+    fullnode: SHELBY_LEDGER_RPC,
 });
 
-const shelbyClient = new ShelbyClient(shelbyConfig);
 const aptosClient = new Aptos(aptosConfig);
 
 export async function submitVerifiedPicture(
@@ -36,7 +39,6 @@ export async function submitVerifiedPicture(
     imageBlob: Blob
 ) {
     try {
-        // Tạo tên file: Ưu tiên Nickname -> Ví -> Mặc định
         const playerTag = nickname || `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}`;
         const fileName = `2048_Shelby_${playerTag.replace(/[^a-z0-9]/gi, '_')}_${score}.png`;
 
@@ -47,7 +49,7 @@ export async function submitVerifiedPicture(
         const commitments = await generateCommitments(provider, data);
         const totalParts = expectedTotalChunksets(commitments.raw_data_size);
 
-        // BƯỚC 1: Đăng ký Metadata (Ví sẽ hiện popup xác nhận)
+        // 1. REGISTER METADATA (On-chain)
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
@@ -58,16 +60,50 @@ export async function submitVerifiedPicture(
             encoding: 0,
         });
 
+        console.log(`[Shelby Sync] Registering Metadata: ${fileName}`);
         const tx = await signAndSubmitTransaction({ data: payload });
         await aptosClient.waitForTransaction({ transactionHash: tx.hash });
 
-        // BƯỚC 2: Đẩy ảnh thật vào kho (Dùng Index 0 như đã phân tích)
-        await shelbyClient.rpc.putBlob({
-            account: AccountAddress.from(accountAddress),
-            blobName: fileName,
-            blobData: data,
+        // 2. MANUAL MULTIPART UPLOAD (Ensures x-api-key is sent)
+        console.log(`[Shelby Sync] Initializing Upload...`);
+        const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({
+                rawAccount: accountAddress,
+                rawBlobName: fileName,
+                rawPartSize: data.length
+            })
         });
 
+        if (!initResponse.ok) {
+            const errBody = await initResponse.text();
+            throw new Error(`Init Fail (401 Check): ${initResponse.status} - ${errBody}`);
+        }
+
+        const uploadInfo = await initResponse.json();
+        const uploadId = uploadInfo.upload_id || uploadInfo.data?.upload_id;
+
+        // 3. UPLOAD BINARY PART (Index 0)
+        console.log(`[Shelby Sync] Uploading Binary Part 0...`);
+        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
+            method: 'PUT',
+            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+            body: imageBlob
+        });
+
+        if (!partResponse.ok) throw new Error(`Part Upload Fail: ${partResponse.status}`);
+
+        // 4. COMPLETE UPLOAD
+        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
+        });
+
+        if (!finalizeResponse.ok) throw new Error("Complete Upload Fail");
+
+        console.log(`[Shelby Sync] 100% SUCCESS! Tx: ${tx.hash}`);
         return tx;
     } catch (error: any) {
         console.error("[Shelby Error]:", error);
@@ -76,6 +112,5 @@ export async function submitVerifiedPicture(
 }
 
 export async function fetchLeaderboard() {
-    // Current SDK flow: Leaderboard managed by indexer
     return [];
 }
