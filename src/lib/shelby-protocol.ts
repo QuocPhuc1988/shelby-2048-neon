@@ -59,56 +59,57 @@ export async function submitVerifiedPicture(
         const tx = await signAndSubmitTransaction({ data: payload });
         await aptosClient.waitForTransaction({ transactionHash: tx.hash });
 
-        // 2. INITIALIZING UPLOAD
-        const fileSize = data.length;
-        if (Number.isNaN(fileSize) || fileSize <= 0) {
-            throw new Error(`Dữ liệu ảnh không hợp lệ (NaN or empty). Dung lượng: ${fileSize}`);
+        // 2. INITIALIZING UPLOAD (Refinery v4.0 - Anti-NaN Edition)
+        const cleanSize = Number(data.length);
+        if (isNaN(cleanSize) || cleanSize <= 0) {
+            throw new Error("LỖI LOGIC: Kích thước ảnh không xác định (NaN)");
         }
 
+        console.log(`[Storage] Xin mã vận đơn cho: ${fileName} (${cleanSize} bytes)`);
         const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
             method: 'POST',
             headers: HEADERS,
             body: JSON.stringify({
                 rawAccount: accountAddress,
                 rawBlobName: fileName,
-                rawBlobSize: fileSize,
-                partSize: fileSize, // SERVER CRITICAL: Fix NaN
-                blobSize: fileSize  // Redundancy
+                partSize: cleanSize,   // SERVER CRITICAL: Đích danh trường partSize
+                rawBlobSize: cleanSize, // Redundancy 1
+                rawPartSize: cleanSize, // Redundancy 2
+                blobSize: cleanSize     // Redundancy 3
             })
         });
 
         const resData = await initResponse.json();
 
         // --- ĐOẠN FIX CHÍ MẠNG Ở ĐÂY ---
-        // Server của ông trả về uploadId (CamelCase), phải bắt đúng tên này!
+        // Bắt ID (CamelCase như log đã báo)
         const uploadId = resData.uploadId || resData.upload_id || resData.data?.uploadId || resData.id;
 
         if (!uploadId) {
             console.error("[Shelby Error] Server response:", resData);
             throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId. Server trả về: ${JSON.stringify(resData)}`);
+
+            // 3. UPLOAD PART 0
+            const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
+                method: 'PUT',
+                headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+                body: data
+            });
+
+            if (!partResponse.ok) throw new Error("Upload Part Fail");
+
+            // 4. COMPLETE UPLOAD
+            const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+                method: 'POST',
+                headers: HEADERS,
+                body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
+            });
+
+            if (!finalizeResponse.ok) throw new Error("Finalize Fail");
+
+            return tx;
+        } catch (error: any) {
+            console.error("[Shelby Critical Error]:", error);
+            throw error;
         }
-
-        // 3. UPLOAD PART 0
-        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
-            method: 'PUT',
-            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
-            body: data
-        });
-
-        if (!partResponse.ok) throw new Error("Upload Part Fail");
-
-        // 4. COMPLETE UPLOAD
-        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
-            method: 'POST',
-            headers: HEADERS,
-            body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
-        });
-
-        if (!finalizeResponse.ok) throw new Error("Finalize Fail");
-
-        return tx;
-    } catch (error: any) {
-        console.error("[Shelby Critical Error]:", error);
-        throw error;
     }
-}
