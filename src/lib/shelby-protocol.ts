@@ -6,10 +6,10 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET ULTIMATE PRODUCTION STABILIZATION (v2.18) ---
+// --- SHELBYNET ABSOLUTE GOLDEN REFINERY (v2.20) ---
 /**
- * IDENTITY & VISUAL REFINEMENT: 
- * Upgraded naming logic to prioritize Identity: Nickname -> Wallet -> Fallback.
+ * MISSION ACCOMPLISHED: Final refinement of Identity, Naming, and Synchronization.
+ * Implements "lau bảng" logic and shortened wallet identification.
  */
 const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
 const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
@@ -36,6 +36,14 @@ const aptosConfig = new AptosConfig({
 
 const aptosClient = new Aptos(aptosConfig);
 
+/**
+ * Shortens wallet address for clear identity (0x1234...abcd)
+ */
+const shortenAddress = (addr: string) => {
+    if (!addr) return "Unknown";
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+};
+
 export async function submitVerifiedPicture(
     signAndSubmitTransaction: any,
     accountAddress: string,
@@ -48,20 +56,16 @@ export async function submitVerifiedPicture(
     let data: Uint8Array = new Uint8Array();
 
     try {
-        // --- UPGRADED NAMING LOGIC (v2.18) ---
-        // 1. Priority: Nickname -> 2. Wallet Address -> 3. Fallback
-        let playerIdentity = nickname && nickname.trim() !== "" ? nickname.trim() : accountAddress;
+        // --- FINALIZED NAMING LOGIC (v2.20) ---
+        // 1. Priority: Nickname -> 2. Shortened Wallet -> 3. Fallback
+        const hasNick = nickname && nickname.trim() !== "" && nickname !== 'Anony_Shelby';
+        const displayPlayer = hasNick ? nickname!.trim() : shortenAddress(accountAddress);
 
-        if (!playerIdentity) {
-            const timestamp = Math.floor(Date.now() / 1000);
-            playerIdentity = `2048_shelby_${timestamp}`;
-        }
+        // Clean name and format as 2048_Shelby_[ID]_[SCORE]
+        const cleanName = displayPlayer.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+        fileName = `2048_Shelby_${cleanName}_${score}.${format}`;
 
-        // Clean name (alphanumeric + underscore only) and limit length
-        const cleanName = playerIdentity.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
-        fileName = `${cleanName}_${score}.${format}`;
-
-        console.log(`[Đồng bộ Shelby] Xử lý Identity: ${cleanName}`);
+        console.log(`[Đồng bộ Shelby] Final Identity: ${cleanName}`);
 
         const arrayBuffer = await imageBlob.arrayBuffer();
         data = new Uint8Array(arrayBuffer);
@@ -69,7 +73,7 @@ export async function submitVerifiedPicture(
         const provider = await createDefaultErasureCodingProvider();
         const commitments = await generateCommitments(provider, data);
 
-        console.log(`[Đồng bộ Shelby] Bước 2: Đăng ký Chuỗi...`);
+        console.log(`[Đồng bộ Shelby] Gửi giao dịch chuỗi...`);
         const expirationMicros = (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000;
 
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
@@ -83,11 +87,9 @@ export async function submitVerifiedPicture(
         });
 
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
-
-        console.log(`[Đồng bộ Shelby] Chờ Giao dịch: ${transactionResponse.hash}`);
         await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
 
-        console.log(`[Đồng bộ Shelby] Bước 3: Khởi tạo Multipart Upload...`);
+        console.log(`[Đồng bộ Shelby] Khởi tạo Upload: ${fileName}`);
 
         const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
             method: 'POST',
@@ -111,48 +113,31 @@ export async function submitVerifiedPicture(
             (uploadInfo.upload_info && uploadInfo.upload_info.upload_id) ||
             (uploadInfo.data && uploadInfo.data.upload_id);
 
-        if (!uploadId || uploadId === "undefined") {
-            console.error("[Đồng bộ Shelby] LỖI Metadata:", JSON.stringify(uploadInfo));
-            throw new Error("Lỗi hệ thống: Không thể gán Upload ID.");
-        }
+        if (!uploadId) throw new Error("Không thể trích xuất Upload ID hợp lệ.");
 
-        console.log(`[Đồng bộ Shelby] ID: ${uploadId}`);
-
-        // 2. UPLOAD PART DATA
-        console.log(`[Đồng bộ Shelby] Bước 4: Đẩy dữ liệu (Part 0)...`);
+        // 2. UPLOAD PART DATA (0-indexed)
+        console.log(`[Đồng bộ Shelby] Đẩy dữ liệu lên Shelby...`);
         const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
-            headers: {
-                ...HEADERS,
-                'Content-Type': 'application/octet-stream'
-            },
+            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
             body: imageBlob
         });
 
-        if (!partResponse.ok) {
-            const partError = await partResponse.text();
-            throw new Error(`Part Fail: ${partResponse.status} - ${partError}`);
-        }
+        if (!partResponse.ok) throw new Error("Lỗi tải phần dữ liệu.");
 
         // 3. COMPLETE UPLOAD
-        console.log(`[Đồng bộ Shelby] Bước 5: Hoàn tất (Part 0)...`);
         const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
             method: 'POST',
             headers: HEADERS,
-            body: JSON.stringify({
-                partIdentifiers: [{ partNumber: 0 }]
-            })
+            body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
         });
 
-        if (!finalizeResponse.ok) {
-            const finalError = await finalizeResponse.text();
-            throw new Error(`Complete Fail: ${finalizeResponse.status} - ${finalError}`);
-        }
+        if (!finalizeResponse.ok) throw new Error("Lỗi hoàn tất upload.");
 
         console.log(`[Đồng bộ Shelby] ĐỒNG BỘ THÀNH CÔNG RỰC RỠ! 🚀`);
         return transactionResponse;
     } catch (error: any) {
-        console.error("[Chi tiết lỗi Shelby v2.18]:", error);
+        console.error("[Shelby v2.20 Error]:", error);
         throw error;
     }
 }
