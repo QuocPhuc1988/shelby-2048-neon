@@ -100,7 +100,10 @@ export default function Home() {
           // 3. SUCCESS
           setSyncStatus('success');
           setErrorMessage(null);
-          console.log("Verified Picture Synced! TX:", response.hash);
+          // SET HASH: Crucial fix for 'transaction/null' bug
+          const txHash = response.hash || response.transactionHash;
+          setLastTxHash(txHash);
+          console.log("Verified Picture Synced! TX:", txHash);
         } catch (txError: any) {
           console.error("Submission failed", txError);
           setSyncStatus('error');
@@ -287,11 +290,11 @@ export default function Home() {
               >
                 <Send size={24} className="group-hover:translate-x-1 transition-transform" /> SENT PICTURE
               </button>
-            ) : syncStatus === 'success' ? (
+            ) : (syncStatus === 'success' && lastTxHash) ? (
               <a
-                href={`https://explorer.shelby.xyz/transaction/${lastTxHash}`}
+                href={`https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`}
                 target="_blank"
-                className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl"
+                className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500"
               >
                 <ExternalLink size={24} /> VIEW ON EXPLORER
               </a>
