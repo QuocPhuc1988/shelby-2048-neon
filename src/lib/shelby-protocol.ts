@@ -6,10 +6,10 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET ULTIMATE PRODUCTION STABILIZATION (v2.14) ---
+// --- SHELBYNET ULTIMATE PRODUCTION STABILIZATION (v2.15) ---
 /**
- * ROBUST MANUAL NATIVE SYNC: Added ID validation and debug logs 
- * to prevent the "undefined" upload ID error reported in network logs.
+ * VERBOSE MANUAL NATIVE SYNC: Full-trace logging for the uploadId handshake.
+ * This identifies why the ID was "undefined" in previous attempts.
  */
 const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
 const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
@@ -50,14 +50,14 @@ export async function submitVerifiedPicture(
     try {
         fileName = `${nickname.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}_${score}.${format}`;
 
-        console.log(`[Đồng bộ Shelby] Đang mã hóa ${fileName}...`);
+        console.log(`[Đồng bộ Shelby] Bước 1: Mã hóa (${fileName})...`);
         const arrayBuffer = await imageBlob.arrayBuffer();
         data = new Uint8Array(arrayBuffer);
 
         const provider = await createDefaultErasureCodingProvider();
         const commitments = await generateCommitments(provider, data);
 
-        console.log(`[Đồng bộ Shelby] Đăng ký trên chuỗi Shelbynet...`);
+        console.log(`[Đồng bộ Shelby] Bước 2: Đăng ký Chuỗi...`);
         const expirationMicros = (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000;
 
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
@@ -72,10 +72,10 @@ export async function submitVerifiedPicture(
 
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        console.log(`[Đồng bộ Shelby] Chờ xác nhận giao dịch...`);
+        console.log(`[Đồng bộ Shelby] Chờ xác nhận Giao dịch...`);
         await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
 
-        console.log(`[Đồng bộ Shelby] Khởi tạo phiên tải lên tại ${SHELBY_STORAGE_RPC}...`);
+        console.log(`[Đồng bộ Shelby] Bước 3: Khởi tạo Multipart Upload...`);
 
         // 1. INITIATE UPLOAD
         const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
@@ -90,21 +90,32 @@ export async function submitVerifiedPicture(
 
         if (!initResponse.ok) {
             const body = await initResponse.text();
-            throw new Error(`Khởi tạo thất bại: ${initResponse.status} - ${body}`);
+            throw new Error(`Init Fail: ${initResponse.status} - ${body}`);
         }
 
         const uploadInfo = await initResponse.json();
-        // Support both snake_case (standard) and camelCase (potential variation)
-        const uploadId = uploadInfo.upload_id || uploadInfo.uploadId;
 
-        console.log(`[Đồng bộ Shelby] ID phiên: ${uploadId}`);
+        /** 
+         * VERBOSE DEBUG: Log the full response to find the correct ID field.
+         */
+        console.log("[Đồng bộ Shelby] JSON Metadata:", JSON.stringify(uploadInfo));
+
+        // Robust ID extraction mapping
+        const uploadId =
+            uploadInfo.upload_id ||
+            uploadInfo.uploadId ||
+            (uploadInfo.upload_info && uploadInfo.upload_info.upload_id) ||
+            (uploadInfo.data && uploadInfo.data.upload_id);
 
         if (!uploadId || uploadId === "undefined") {
-            throw new Error("Lỗi hệ thống: Không lấy được Upload ID hợp lệ từ máy chủ Shelby.");
+            console.error("[Đồng bộ Shelby] LỖI: Không tìm thấy Upload ID trong phản hồi JSON!");
+            throw new Error("Lỗi hệ thống: Phản hồi từ Shelby không chứa Mã định danh Upload hợp lệ.");
         }
 
+        console.log(`[Đồng bộ Shelby] ID phiên hợp lệ: ${uploadId}`);
+
         // 2. UPLOAD PART DATA
-        console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu (${uploadId})...`);
+        console.log(`[Đồng bộ Shelby] Bước 4: Đẩy dữ liệu (PUT)...`);
         const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/1`, {
             method: 'PUT',
             headers: {
@@ -116,10 +127,11 @@ export async function submitVerifiedPicture(
 
         if (!partResponse.ok) {
             const partError = await partResponse.text();
-            throw new Error(`Lỗi tải dữ liệu: ${partResponse.status} - ${partError}`);
+            throw new Error(`Part Fail: ${partResponse.status} - ${partError}`);
         }
 
         // 3. COMPLETE UPLOAD
+        console.log(`[Đồng bộ Shelby] Bước 5: Hoàn tất (Complete)...`);
         const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
             method: 'POST',
             headers: HEADERS,
@@ -128,12 +140,15 @@ export async function submitVerifiedPicture(
             })
         });
 
-        if (!finalizeResponse.ok) throw new Error("Lỗi hoàn thiện dữ liệu trên Shelby");
+        if (!finalizeResponse.ok) {
+            const finalError = await finalizeResponse.text();
+            throw new Error(`Complete Fail: ${finalizeResponse.status} - ${finalError}`);
+        }
 
-        console.log(`[Đồng bộ Shelby] Thành công rực rỡ!`);
+        console.log(`[Đồng bộ Shelby] ĐỒNG BỘ THÀNH CÔNG RỰC RỠ! 🚀`);
         return transactionResponse;
     } catch (error: any) {
-        console.error("[Chi tiết lỗi Shelby v2.14]:", error);
+        console.error("[Chi tiết lỗi Shelby v2.15]:", error);
         throw error;
     }
 }
