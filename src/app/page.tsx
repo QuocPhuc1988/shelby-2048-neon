@@ -96,7 +96,7 @@ export default function Home() {
         // 3. SIGNING & UPLOAD
         setSyncStatus('signing');
         try {
-          await submitVerifiedPicture(
+          const txResult = await submitVerifiedPicture(
             signAndSubmitTransaction,
             account!.address.toString(),
             nickname || null,
@@ -106,7 +106,12 @@ export default function Home() {
 
           setSyncStatus('success');
           setErrorMessage(null);
-          setLastTxHash('SUCCESS_ON_CHAIN'); // Placeholder as SDK method is high-level now
+
+          if (txResult?.hash) {
+            setLastTxHash(txResult.hash);
+          } else {
+            setLastTxHash('SUCCESS_ON_CHAIN');
+          }
         } catch (txError: any) {
           console.error("Submission failed", txError);
           setSyncStatus('error');
@@ -325,8 +330,8 @@ export default function Home() {
                     }
                   }}
                   className={`w-full py-6 font-black rounded-xl border-2 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500 ${(!lastTxHash || !lastTxHash.startsWith('0x'))
-                      ? "opacity-50 cursor-not-allowed bg-gray-800 border-gray-700 text-gray-500"
-                      : "bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/30"
+                    ? "opacity-50 cursor-not-allowed bg-gray-800 border-gray-700 text-gray-500"
+                    : "bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/30"
                     }`}
                 >
                   {lastTxHash && lastTxHash.startsWith('0x') ? <ExternalLink size={24} /> : <Loader2 size={24} className="animate-spin" />}
