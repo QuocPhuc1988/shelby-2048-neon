@@ -7,31 +7,38 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET PRODUCTION ALIGNMENT (FORCE) ---
+// --- SHELBYNET PRODUCTION ALIGNMENT ---
 const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
 const SHELBY_STORAGE_RPC = "https://api.shelbynet.shelby.xyz/shelby";
 
-// Authentication Normalization (Prefix-Agnostic)
+// Authentication Normalization (The DEFINITIVE Fix)
 const getCleanApiKey = () => {
     const raw = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
+    // Strip prefixes to get the raw "bot_..." key string
     return raw.replace(/^bearer\s+/i, "").trim();
 };
 
 const RAW_KEY = getCleanApiKey();
-const FORMATTED_AUTH_HEADER = `Bearer ${RAW_KEY}`;
+
+/**
+ * CRITICAL RESEARCH FINDING: 
+ * Shelby "Bot" keys starting with 'bot_' require the 'x-api-key' header 
+ * for successful storage uploads, rather than 'Authorization: Bearer'.
+ */
+const HEADERS = {
+    'x-api-key': RAW_KEY,
+    'Content-Type': 'application/json'
+};
 
 // Shelby SDK Config
 const shelbyConfig: any = {
     network: Network.TESTNET,
     rpcUrl: SHELBY_STORAGE_RPC,
     apiKey: RAW_KEY,
-    headers: {
-        'Authorization': FORMATTED_AUTH_HEADER,
-        'x-api-key': RAW_KEY
-    }
+    headers: HEADERS // Inject correct Geomi headers
 };
 
-// Aptos SDK Config
+// Aptos SDK Config (v5.2.1 Pinned)
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
     fullnode: SHELBY_LEDGER_RPC,
@@ -48,7 +55,6 @@ export async function submitVerifiedPicture(
     imageBlob: Blob,
     format: 'png' | 'jpg'
 ) {
-    // Declare variables outside try/catch to ensure availability in recovery layer
     let fileName = "";
     let data: Uint8Array = new Uint8Array();
 
@@ -80,8 +86,9 @@ export async function submitVerifiedPicture(
         console.log(`[Đồng bộ Shelby] Đang chờ xác nhận giao dịch...`);
         await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
 
-        console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu vào kho: ${SHELBY_STORAGE_RPC}`);
+        console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu vào kho...`);
 
+        // Finalized PUT with x-api-key reinforcement
         await shelbyClient.rpc.putBlob({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
@@ -93,15 +100,12 @@ export async function submitVerifiedPicture(
     } catch (error: any) {
         console.error("[Chi tiết lỗi Shelby]:", error);
 
-        // Manual handshake recovery layer (uses outer variables)
-        if (error.status === 401 || error.message?.includes("401") || error.message?.includes("Unauthorized")) {
-            console.warn("[Đồng bộ Shelby] Thử nghiệm phương thức bắt tay thủ công (Bearer Fix)...");
+        // DEFINITIVE Manual Check (x-api-key)
+        if (error.status === 401 || error.message?.includes("401")) {
+            console.warn("[Đồng bộ Shelby] Thử nghiệm bắt tay thủ công (Hệ chuẩn x-api-key)...");
             const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': FORMATTED_AUTH_HEADER
-                },
+                headers: HEADERS,
                 body: JSON.stringify({
                     rawAccount: accountAddress,
                     rawBlobName: fileName,
@@ -110,10 +114,8 @@ export async function submitVerifiedPicture(
             });
             if (response.ok) {
                 console.log("[Đồng bộ Shelby] Bắt tay thủ công THÀNH CÔNG!");
-                // Success in handshake usually means the SDK part upload should have worked or will work.
             } else {
-                const body = await response.text();
-                throw new Error(`Lỗi 401: Khóa xác thực bị từ chối (${body}). Kiểm tra lại Vercel Env Vars.`);
+                throw new Error("LỖI 401: Shelby từ chối khóa xác thực. Hãy chắc chắn biến môi trường tên là NEXT_PUBLIC_SHELBY_API_KEY.");
             }
         }
         throw error;
@@ -121,7 +123,5 @@ export async function submitVerifiedPicture(
 }
 
 export async function fetchLeaderboard() {
-    return [
-        { nickname: "Player_1", score: 2048, time: 100, address: "0x123", timestamp: Date.now() }
-    ];
+    return [];
 }
