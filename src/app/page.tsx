@@ -91,39 +91,43 @@ export default function Home() {
       const quality = fileFormat === 'image/jpeg' ? 0.8 : undefined;
       const extension = fileFormat === 'image/png' ? 'png' : 'jpg';
 
-      canvas.toBlob(async (blob: Blob | null) => {
-        if (!blob) {
-          setSyncStatus('error');
-          return;
-        }
+      // 2. BLOB GENERATION (Promise-wrapped for reliability)
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, fileFormat, quality));
 
-        // 2. SIGNING PHASE
-        setSyncStatus('signing');
-        try {
-          const response = await submitVerifiedPicture(
-            signAndSubmitTransaction,
-            account!.address.toString(),
-            nickname || 'Anony_Shelby',
-            score,
-            blob,
-            extension as any
-          );
+      if (!blob || blob.size < 100) {
+        console.error("Capture failed: Blob is empty or too small", blob?.size);
+        setSyncStatus('error');
+        setErrorMessage("Lỗi khởi tạo ảnh. Vui lòng thử lại.");
+        return;
+      }
 
-          // 3. SUCCESS
-          setSyncStatus('success');
-          setErrorMessage(null);
-          // SET HASH (Enhanced Logic)
-          const txHash = response.hash || response.transactionHash;
-          setLastTxHash(txHash);
+      console.log(`Capture Success: ${blob.size} bytes | Format: ${fileFormat}`);
 
-          const identity = (nickname && nickname !== 'Anony_Shelby') ? nickname : `${account!.address.toString().slice(0, 6)}...${account!.address.toString().slice(-4)}`;
-          console.log(`Verified Sync Success [${identity}]:`, txHash);
-        } catch (txError: any) {
-          console.error("Submission failed", txError);
-          setSyncStatus('error');
-          setErrorMessage(txError.message || "Đã có lỗi xảy ra. Vui lòng thử lại.");
-        }
-      }, fileFormat, quality);
+      // 3. SIGNING PHASE
+      setSyncStatus('signing');
+      try {
+        const response = await submitVerifiedPicture(
+          signAndSubmitTransaction,
+          account!.address.toString(),
+          nickname || 'Anony_Shelby',
+          score,
+          blob,
+          extension as any
+        );
+
+        // 4. SUCCESS
+        setSyncStatus('success');
+        setErrorMessage(null);
+        const txHash = response.hash || response.transactionHash;
+        setLastTxHash(txHash);
+
+        const identity = (nickname && nickname !== 'Anony_Shelby') ? nickname : `${account!.address.toString().slice(0, 6)}...${account!.address.toString().slice(-4)}`;
+        console.log(`Verified Sync Success [${identity}]:`, txHash);
+      } catch (txError: any) {
+        console.error("Submission failed", txError);
+        setSyncStatus('error');
+        setErrorMessage(txError.message || "Đã có lỗi xảy ra. Vui lòng thử lại.");
+      }
     } catch (e: any) {
       console.error("Sync flow failed", e);
       setSyncStatus('error');
