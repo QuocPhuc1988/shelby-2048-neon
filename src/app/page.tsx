@@ -58,30 +58,34 @@ export default function Home() {
     try {
       // 1. CAPTURE PHASE
       if (certificateRef.current) {
+        // Bring to foreground for clean capture
+        certificateRef.current.style.top = '0';
+        certificateRef.current.style.left = '0';
         certificateRef.current.style.opacity = '1';
         certificateRef.current.style.visibility = 'visible';
       }
 
-      // 2.5s Stabilization Buffer (User requested patience for quality)
+      // 2s Stabilization Buffer (Vital for high-res rendering)
       window.scrollTo(0, 0);
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       const captureTarget = certificateRef.current;
       if (!captureTarget) throw new Error("Capture target missing");
 
       const canvas = await html2canvas(captureTarget, {
         backgroundColor: '#000000',
-        scale: 3, // Ultra-high resolution
+        scale: 2, // Stable high-res
         logging: false,
         useCORS: true,
         allowTaint: true,
-        width: 1080, // Square high-res card
+        width: 1080,
         height: 1080,
       });
 
       if (certificateRef.current) {
-        certificateRef.current.style.opacity = '0';
-        certificateRef.current.style.visibility = 'hidden';
+        // Hide again
+        certificateRef.current.style.top = '-5000px';
+        certificateRef.current.style.left = '-5000px';
       }
 
       const quality = fileFormat === 'image/jpeg' ? 0.8 : undefined;
@@ -347,7 +351,7 @@ export default function Home() {
       {/* CONSENT MODAL (Sync UI Ported from External Build) */}
       {
         showConsent && (
-          <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
+          <div data-html2canvas-ignore className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
             <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-3xl text-left flex flex-col overflow-hidden animate-in zoom-in duration-300">
               <div className="p-8 pb-4">
                 <div className="flex items-center gap-4 mb-6">
