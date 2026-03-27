@@ -6,10 +6,10 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET ULTIMATE PRODUCTION STABILIZATION (v2.15) ---
+// --- SHELBYNET ULTIMATE PRODUCTION STABILIZATION (v2.16) ---
 /**
- * VERBOSE MANUAL NATIVE SYNC: Full-trace logging for the uploadId handshake.
- * This identifies why the ID was "undefined" in previous attempts.
+ * 0-BASED INDEX ALIGNMENT: 
+ * Switched to /parts/0 to resolve the 'Bad Request' indexing error.
  */
 const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
 const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
@@ -94,13 +94,6 @@ export async function submitVerifiedPicture(
         }
 
         const uploadInfo = await initResponse.json();
-
-        /** 
-         * VERBOSE DEBUG: Log the full response to find the correct ID field.
-         */
-        console.log("[Đồng bộ Shelby] JSON Metadata:", JSON.stringify(uploadInfo));
-
-        // Robust ID extraction mapping
         const uploadId =
             uploadInfo.upload_id ||
             uploadInfo.uploadId ||
@@ -108,15 +101,15 @@ export async function submitVerifiedPicture(
             (uploadInfo.data && uploadInfo.data.upload_id);
 
         if (!uploadId || uploadId === "undefined") {
-            console.error("[Đồng bộ Shelby] LỖI: Không tìm thấy Upload ID trong phản hồi JSON!");
-            throw new Error("Lỗi hệ thống: Phản hồi từ Shelby không chứa Mã định danh Upload hợp lệ.");
+            console.error("[Đồng bộ Shelby] LỖI: JSON Response:", JSON.stringify(uploadInfo));
+            throw new Error("Lỗi hệ thống: Không lấy được Upload ID hợp lệ.");
         }
 
-        console.log(`[Đồng bộ Shelby] ID phiên hợp lệ: ${uploadId}`);
+        console.log(`[Đồng bộ Shelby] Upload ID: ${uploadId}`);
 
-        // 2. UPLOAD PART DATA
-        console.log(`[Đồng bộ Shelby] Bước 4: Đẩy dữ liệu (PUT)...`);
-        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/1`, {
+        // 2. UPLOAD PART DATA (Switched to 0-based index)
+        console.log(`[Đồng bộ Shelby] Bước 4: Đẩy dữ liệu (Part 0)...`);
+        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
             headers: {
                 ...HEADERS,
@@ -127,16 +120,16 @@ export async function submitVerifiedPicture(
 
         if (!partResponse.ok) {
             const partError = await partResponse.text();
-            throw new Error(`Part Fail: ${partResponse.status} - ${partError}`);
+            throw new Error(`Part Fail (400?): ${partResponse.status} - ${partError}`);
         }
 
-        // 3. COMPLETE UPLOAD
-        console.log(`[Đồng bộ Shelby] Bước 5: Hoàn tất (Complete)...`);
+        // 3. COMPLETE UPLOAD (Switched to 0-based index)
+        console.log(`[Đồng bộ Shelby] Bước 5: Hoàn tất (Complete Part 0)...`);
         const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
             method: 'POST',
             headers: HEADERS,
             body: JSON.stringify({
-                partIdentifiers: [{ partNumber: 1 }]
+                partIdentifiers: [{ partNumber: 0 }]
             })
         });
 
@@ -148,7 +141,7 @@ export async function submitVerifiedPicture(
         console.log(`[Đồng bộ Shelby] ĐỒNG BỘ THÀNH CÔNG RỰC RỠ! 🚀`);
         return transactionResponse;
     } catch (error: any) {
-        console.error("[Chi tiết lỗi Shelby v2.15]:", error);
+        console.error("[Chi tiết lỗi Shelby v2.16]:", error);
         throw error;
     }
 }
