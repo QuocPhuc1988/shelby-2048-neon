@@ -60,18 +60,25 @@ export async function submitVerifiedPicture(
         await aptosClient.waitForTransaction({ transactionHash: tx.hash });
 
         // 2. INITIALIZING UPLOAD
+        const fileSize = data.length;
+        if (Number.isNaN(fileSize) || fileSize <= 0) {
+            throw new Error(`Dữ liệu ảnh không hợp lệ (NaN or empty). Dung lượng: ${fileSize}`);
+        }
+
         const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
             method: 'POST',
             headers: HEADERS,
             body: JSON.stringify({
                 rawAccount: accountAddress,
                 rawBlobName: fileName,
-                rawBlobSize: data.length
+                rawBlobSize: fileSize,
+                partSize: fileSize, // SERVER CRITICAL: Fix NaN
+                blobSize: fileSize  // Redundancy
             })
         });
 
         const resData = await initResponse.json();
-        
+
         // --- ĐOẠN FIX CHÍ MẠNG Ở ĐÂY ---
         // Server của ông trả về uploadId (CamelCase), phải bắt đúng tên này!
         const uploadId = resData.uploadId || resData.upload_id || resData.data?.uploadId || resData.id;
@@ -85,7 +92,7 @@ export async function submitVerifiedPicture(
         const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
             headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
-            body: data 
+            body: data
         });
 
         if (!partResponse.ok) throw new Error("Upload Part Fail");
