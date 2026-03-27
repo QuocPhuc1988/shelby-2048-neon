@@ -18,9 +18,17 @@ const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
 const RAW_KEY = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
 const CLEAN_KEY = RAW_KEY.replace(/^Bearer\s+/i, "").trim();
 
+// API Key Integrity Seal (v2.30)
+if (!CLEAN_KEY) {
+    console.warn("CRITICAL: NEXT_PUBLIC_SHELBY_API_KEY is missing or empty.");
+} else {
+    console.log(`[Shelby Seal] API Key loaded (${CLEAN_KEY.substring(0, 4)}...${CLEAN_KEY.substring(CLEAN_KEY.length - 4)})`);
+}
+
 const HEADERS = {
     'x-api-key': CLEAN_KEY,
-    'Authorization': `Bearer ${CLEAN_KEY}`,
+    'authorization': `Bearer ${CLEAN_KEY}`,
+    'cache-control': 'no-cache',
     'Content-Type': 'application/json'
 };
 
