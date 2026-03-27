@@ -11,7 +11,7 @@ import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk"
 /**
  * MISSION CRITICAL: Fixed 401 Unauthorized by using Hybrid Manual Fetch for binary upload.
  */
-const SHELBY_RPC_ROOT = "https://api.testnet.shelby.xyz";
+const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
 const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
 const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
 
