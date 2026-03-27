@@ -32,6 +32,7 @@ export default function Home() {
   useEffect(() => {
     setHasMounted(true);
     if (!startTime) initGame();
+    console.log("%c Shelbynet 2048 v2.29 ACTIVE %c Target: https://api.shelbynet.shelby.xyz ", "background: #ff2a75; color: white; font-weight: bold; padding: 2px 5px; border-radius: 3px;", "background: #333; color: #00ff00; padding: 2px 5px; border-radius: 3px;");
   }, [initGame, startTime]);
 
   useEffect(() => {
