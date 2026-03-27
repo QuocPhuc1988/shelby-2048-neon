@@ -1,5 +1,4 @@
 import {
-    ShelbyClient,
     ShelbyBlobClient,
     createDefaultErasureCodingProvider,
     generateCommitments,
@@ -7,34 +6,22 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET PROTOCOL HYBRID REFINERY (v2.28) ---
-/**
- * MISSION CRITICAL: Fixed 401 Unauthorized by using Hybrid Manual Fetch for binary upload.
- */
-const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
-const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
-const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
+// --- SHELBYNET DISCRETE ENDPOINTS (v2.34) ---
+const STORAGE_ENDPOINT = "https://api.shelbynet.shelby.xyz/shelby"; // For Binary/Images
+const LEDGER_ENDPOINT = "https://api.shelbynet.shelby.xyz/v1";      // For Transactions
 
 const RAW_KEY = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
 const CLEAN_KEY = RAW_KEY.replace(/^Bearer\s+/i, "").trim();
 
-// API Key Integrity Seal (v2.30)
-if (!CLEAN_KEY) {
-    console.warn("CRITICAL: NEXT_PUBLIC_SHELBY_API_KEY is missing or empty.");
-} else {
-    console.log(`[Shelby Seal] API Key loaded (${CLEAN_KEY.substring(0, 4)}...${CLEAN_KEY.substring(CLEAN_KEY.length - 4)})`);
-}
-
-const HEADERS = {
+// MISSION CRITICAL: Use only ONE canonical header as requested
+const AUTH_HEADERS = {
     'x-api-key': CLEAN_KEY,
-    'authorization': `Bearer ${CLEAN_KEY}`,
-    'cache-control': 'no-cache',
     'Content-Type': 'application/json'
 };
 
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
-    fullnode: SHELBY_LEDGER_RPC,
+    fullnode: LEDGER_ENDPOINT,
 });
 
 const aptosClient = new Aptos(aptosConfig);
@@ -57,7 +44,7 @@ export async function submitVerifiedPicture(
         const commitments = await generateCommitments(provider, data);
         const totalParts = expectedTotalChunksets(commitments.raw_data_size);
 
-        // 1. REGISTER METADATA (On-chain)
+        // 1. REGISTER METADATA (Ledger)
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
@@ -68,15 +55,15 @@ export async function submitVerifiedPicture(
             encoding: 0,
         });
 
-        console.log(`[Shelby Sync] Registering Metadata: ${fileName}`);
+        console.log(`[Ledger] Registering blob: ${fileName}`);
         const tx = await signAndSubmitTransaction({ data: payload });
         await aptosClient.waitForTransaction({ transactionHash: tx.hash });
 
-        // 2. MANUAL MULTIPART UPLOAD (Ensures x-api-key is sent)
-        console.log(`[Shelby Sync] Initializing Upload...`);
-        const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
+        // 2. MULTIPART UPLOAD (Storage - Discrete URL)
+        console.log(`[Storage] Initializing Upload at: ${STORAGE_ENDPOINT}/v1/multipart-uploads`);
+        const initResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads`, {
             method: 'POST',
-            headers: HEADERS,
+            headers: AUTH_HEADERS,
             body: JSON.stringify({
                 rawAccount: accountAddress,
                 rawBlobName: fileName,
@@ -86,32 +73,31 @@ export async function submitVerifiedPicture(
 
         if (!initResponse.ok) {
             const errBody = await initResponse.text();
-            throw new Error(`Init Fail (401 Check): ${initResponse.status} - ${errBody}`);
+            throw new Error(`Init Fail: ${initResponse.status} - ${errBody}`);
         }
 
         const uploadInfo = await initResponse.json();
         const uploadId = uploadInfo.upload_id || uploadInfo.data?.upload_id;
 
-        // 3. UPLOAD BINARY PART (Index 0)
-        console.log(`[Shelby Sync] Uploading Binary Part 0...`);
-        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
+        // 3. UPLOAD PART (Discrete URL)
+        const partResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
-            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+            headers: { ...AUTH_HEADERS, 'Content-Type': 'application/octet-stream' },
             body: imageBlob
         });
 
         if (!partResponse.ok) throw new Error(`Part Upload Fail: ${partResponse.status}`);
 
         // 4. COMPLETE UPLOAD
-        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+        const finalizeResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/complete`, {
             method: 'POST',
-            headers: HEADERS,
+            headers: AUTH_HEADERS,
             body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
         });
 
         if (!finalizeResponse.ok) throw new Error("Complete Upload Fail");
 
-        console.log(`[Shelby Sync] 100% SUCCESS! Tx: ${tx.hash}`);
+        console.log(`[Shelby Sync] Mission Accomplished! Tx: ${tx.hash}`);
         return tx;
     } catch (error: any) {
         console.error("[Shelby Error]:", error);
