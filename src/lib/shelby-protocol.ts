@@ -7,24 +7,24 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET PRODUCTION ALIGNMENT ---
-const SHELBY_LEDGER_RPC = "https://api.shelbynet.shelby.xyz/v1";
-const SHELBY_STORAGE_RPC = "https://api.shelbynet.shelby.xyz/shelby";
+// --- SHELBYNET PRODUCTION CONSOLIDATION (v2.11) ---
+/**
+ * All legacy "api.testnet" references have been purged. 
+ * We now strictly use the professional Shelbynet infrastructure.
+ */
+const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
+const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
+const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
 
-// Authentication Normalization (The DEFINITIVE Fix)
+// Authentication Normalization (The Definitive Standard)
 const getCleanApiKey = () => {
     const raw = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
-    // Strip prefixes to get the raw "bot_..." key string
+    // Ensure we send only the raw key string to the gateway
     return raw.replace(/^bearer\s+/i, "").trim();
 };
 
 const RAW_KEY = getCleanApiKey();
 
-/**
- * CRITICAL RESEARCH FINDING: 
- * Shelby "Bot" keys starting with 'bot_' require the 'x-api-key' header 
- * for successful storage uploads, rather than 'Authorization: Bearer'.
- */
 const HEADERS = {
     'x-api-key': RAW_KEY,
     'Content-Type': 'application/json'
@@ -32,10 +32,12 @@ const HEADERS = {
 
 // Shelby SDK Config
 const shelbyConfig: any = {
+    // We set network to TESTNET as the SDK requires an enum, 
+    // but we override the URL to hit Shelbynet.
     network: Network.TESTNET,
     rpcUrl: SHELBY_STORAGE_RPC,
     apiKey: RAW_KEY,
-    headers: HEADERS // Inject correct Geomi headers
+    headers: HEADERS
 };
 
 // Aptos SDK Config (v5.2.1 Pinned)
@@ -68,7 +70,7 @@ export async function submitVerifiedPicture(
         const provider = await createDefaultErasureCodingProvider();
         const commitments = await generateCommitments(provider, data);
 
-        console.log(`[Đồng bộ Shelby] Đăng ký trên chuỗi ID 113...`);
+        console.log(`[Đồng bộ Shelby] Đăng ký trên chuỗi Shelbynet...`);
         const expirationMicros = (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000;
 
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
@@ -83,12 +85,12 @@ export async function submitVerifiedPicture(
 
         const transactionResponse = await signAndSubmitTransaction({ data: payload });
 
-        console.log(`[Đồng bộ Shelby] Đang chờ xác nhận giao dịch...`);
+        console.log(`[Đồng bộ Shelby] Chờ xác nhận giao dịch...`);
         await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
 
         console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu vào kho...`);
 
-        // Finalized PUT with x-api-key reinforcement
+        // Use SDK putBlob with reinforced headers
         await shelbyClient.rpc.putBlob({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
@@ -100,9 +102,9 @@ export async function submitVerifiedPicture(
     } catch (error: any) {
         console.error("[Chi tiết lỗi Shelby]:", error);
 
-        // DEFINITIVE Manual Check (x-api-key)
-        if (error.status === 401 || error.message?.includes("401")) {
-            console.warn("[Đồng bộ Shelby] Thử nghiệm bắt tay thủ công (Hệ chuẩn x-api-key)...");
+        // Manual recovery handshake (Primary mode in v2.11+)
+        if (error.status === 401 || error.message?.includes("401") || error.message?.includes("Unauthorized")) {
+            console.warn("[Đồng bộ Shelby] Đang thử phương thức bắt tay tối ưu (x-api-key)...");
             const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
                 method: 'POST',
                 headers: HEADERS,
@@ -115,7 +117,7 @@ export async function submitVerifiedPicture(
             if (response.ok) {
                 console.log("[Đồng bộ Shelby] Bắt tay thủ công THÀNH CÔNG!");
             } else {
-                throw new Error("LỖI 401: Shelby từ chối khóa xác thực. Hãy chắc chắn biến môi trường tên là NEXT_PUBLIC_SHELBY_API_KEY.");
+                throw new Error("LỖI XÁC THỰC: Shelby từ chối mã khóa. Kiểm tra biến NEXT_PUBLIC_SHELBY_API_KEY.");
             }
         }
         throw error;
