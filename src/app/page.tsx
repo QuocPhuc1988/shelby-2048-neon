@@ -56,11 +56,15 @@ export default function Home() {
 
     setSyncStatus('capturing');
     try {
-      // 1. CAPTURE PHASE
+      1. CAPTURE PHASE
       if (certificateRef.current) {
         certificateRef.current.style.opacity = '1';
         certificateRef.current.style.visibility = 'visible';
       }
+
+      // Stability Buffer: Scroll to top and wait for DOM stabilization
+      window.scrollTo(0, 0);
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       const element = document.body;
       const canvas = await html2canvas(element, {
@@ -68,8 +72,10 @@ export default function Home() {
         scale: 2,
         logging: false,
         useCORS: true,
+        allowTaint: true,
         scrollX: 0, scrollY: 0,
-        width: window.innerWidth, height: window.innerHeight
+        windowWidth: document.documentElement.offsetWidth,
+        windowHeight: document.documentElement.offsetHeight,
       });
 
       if (certificateRef.current) {
