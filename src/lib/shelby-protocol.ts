@@ -126,7 +126,7 @@ export async function submitVerifiedPicture(
                 ...HEADERS,
                 'Content-Type': 'application/octet-stream'
             },
-            body: data
+            body: imageBlob
         });
 
         if (!partResponse.ok) {

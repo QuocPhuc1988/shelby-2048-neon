@@ -56,7 +56,7 @@ export default function Home() {
 
     setSyncStatus('capturing');
     try {
-      1. CAPTURE PHASE
+      // 1. CAPTURE PHASE
       if (certificateRef.current) {
         certificateRef.current.style.opacity = '1';
         certificateRef.current.style.visibility = 'visible';
