@@ -1,5 +1,4 @@
 import {
-    ShelbyClient,
     ShelbyBlobClient,
     createDefaultErasureCodingProvider,
     generateCommitments,
@@ -7,19 +6,18 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET PRODUCTION CONSOLIDATION (v2.11) ---
+// --- SHELBYNET ULTIMATE PRODUCTION STABILIZATION (v2.13) ---
 /**
- * All legacy "api.testnet" references have been purged. 
- * We now strictly use the professional Shelbynet infrastructure.
+ * 100% MANUAL NATIVE SYNC: Bypasses SDK defaults to kill background leaks.
+ * Source: Geomi/Shelby standard for bot keys (x-api-key).
  */
 const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
 const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
 const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
 
-// Authentication Normalization (The Definitive Standard)
+// Authentication Normalization
 const getCleanApiKey = () => {
     const raw = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
-    // Ensure we send only the raw key string to the gateway
     return raw.replace(/^bearer\s+/i, "").trim();
 };
 
@@ -30,23 +28,12 @@ const HEADERS = {
     'Content-Type': 'application/json'
 };
 
-// Shelby SDK Config
-const shelbyConfig: any = {
-    // We set network to TESTNET as the SDK requires an enum, 
-    // but we override the URL to hit Shelbynet.
-    network: Network.TESTNET,
-    rpcUrl: SHELBY_STORAGE_RPC,
-    apiKey: RAW_KEY,
-    headers: HEADERS
-};
-
 // Aptos SDK Config (v5.2.1 Pinned)
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
     fullnode: SHELBY_LEDGER_RPC,
 });
 
-const shelbyClient = new ShelbyClient(shelbyConfig);
 const aptosClient = new Aptos(aptosConfig);
 
 export async function submitVerifiedPicture(
@@ -88,38 +75,63 @@ export async function submitVerifiedPicture(
         console.log(`[Đồng bộ Shelby] Chờ xác nhận giao dịch...`);
         await aptosClient.waitForTransaction({ transactionHash: transactionResponse.hash });
 
-        console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu vào kho...`);
+        console.log(`[Đồng bộ Shelby] Bắt tay thủ công với cổng Shelbynet...`);
 
-        // Use SDK putBlob with reinforced headers
-        await shelbyClient.rpc.putBlob({
-            account: AccountAddress.from(accountAddress),
-            blobName: fileName,
-            blobData: data,
+        /**
+         * DEFINITIVE MANUAL SYNC FLOW (Bypasses SDK Initiator leaks)
+         * 1. Initiate Multipart Upload via direct fetch
+         */
+        const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({
+                rawAccount: accountAddress,
+                rawBlobName: fileName,
+                rawPartSize: data.length // Single part for optimized speed
+            })
         });
+
+        if (!initResponse.ok) {
+            const body = await initResponse.text();
+            throw new Error(`Xác thực thất bại (401): Shelby từ chối mã khóa. [${body}]`);
+        }
+
+        const uploadInfo = await initResponse.json();
+        const uploadId = uploadInfo.upload_id;
+
+        console.log(`[Đồng bộ Shelby] Đang đẩy dữ liệu (${uploadId})...`);
+
+        /**
+         * 2. Upload part data (Bypasses SDK putBlob)
+         */
+        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/1`, {
+            method: 'PUT',
+            headers: {
+                ...HEADERS,
+                'Content-Type': 'application/octet-stream'
+            },
+            body: data
+        });
+
+        if (!partResponse.ok) throw new Error("Lỗi tải một phần dữ liệu");
+
+        /**
+         * 3. Complete Upload
+         */
+        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({
+                partIdentifiers: [{ partNumber: 1 }]
+            })
+        });
+
+        if (!finalizeResponse.ok) throw new Error("Lỗi hoàn thiện dữ liệu");
 
         console.log(`[Đồng bộ Shelby] Thành công rực rỡ!`);
         return transactionResponse;
     } catch (error: any) {
         console.error("[Chi tiết lỗi Shelby]:", error);
-
-        // Manual recovery handshake (Primary mode in v2.11+)
-        if (error.status === 401 || error.message?.includes("401") || error.message?.includes("Unauthorized")) {
-            console.warn("[Đồng bộ Shelby] Đang thử phương thức bắt tay tối ưu (x-api-key)...");
-            const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
-                method: 'POST',
-                headers: HEADERS,
-                body: JSON.stringify({
-                    rawAccount: accountAddress,
-                    rawBlobName: fileName,
-                    rawPartSize: 5242880
-                })
-            });
-            if (response.ok) {
-                console.log("[Đồng bộ Shelby] Bắt tay thủ công THÀNH CÔNG!");
-            } else {
-                throw new Error("LỖI XÁC THỰC: Shelby từ chối mã khóa. Kiểm tra biến NEXT_PUBLIC_SHELBY_API_KEY.");
-            }
-        }
         throw error;
     }
 }
