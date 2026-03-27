@@ -77,9 +77,16 @@ export async function submitVerifiedPicture(
         }
 
         const uploadInfo = await initResponse.json();
-        const uploadId = uploadInfo.upload_id || uploadInfo.data?.upload_id;
+        // Robust extraction: support both top-level and data-wrapped upload_id
+        const uploadId = uploadInfo.upload_id || uploadInfo.data?.upload_id || uploadInfo.id;
 
-        // 3. UPLOAD PART (Discrete URL)
+        if (!uploadId) {
+            console.error("[Shelby] Failed to extract uploadId from response:", uploadInfo);
+            throw new Error("SERVER_ERROR: Không thể khởi tạo phiên upload (Missing Upload ID)");
+        }
+
+        console.log(`[Storage] Uploading Binary Part 0 to ID: ${uploadId}...`);
+        // 3. UPLOAD PART (Discrete URL with Guard)
         const partResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
             headers: { ...AUTH_HEADERS, 'Content-Type': 'application/octet-stream' },
