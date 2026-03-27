@@ -27,7 +27,9 @@ if (!CLEAN_KEY) {
 
 const HEADERS = {
     'x-api-key': CLEAN_KEY,
+    'X-API-KEY': CLEAN_KEY, // Case redundancy
     'authorization': `Bearer ${CLEAN_KEY}`,
+    'Authorization': `Bearer ${CLEAN_KEY}`, // Case redundancy
     'cache-control': 'no-cache',
     'Content-Type': 'application/json'
 };
