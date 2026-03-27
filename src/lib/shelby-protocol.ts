@@ -1,4 +1,5 @@
 import {
+    ShelbyClient,
     ShelbyBlobClient,
     createDefaultErasureCodingProvider,
     generateCommitments,
@@ -6,22 +7,22 @@ import {
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
 
-// --- SHELBYNET DISCRETE ENDPOINTS (v2.34) ---
-const STORAGE_ENDPOINT = "https://api.shelbynet.shelby.xyz/shelby"; // For Binary/Images
-const LEDGER_ENDPOINT = "https://api.shelbynet.shelby.xyz/v1";      // For Transactions
+const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
+const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
+const SHELBY_LEDGER_RPC = `${SHELBY_RPC_ROOT}/v1`;
 
 const RAW_KEY = process.env.NEXT_PUBLIC_SHELBY_API_KEY || "";
 const CLEAN_KEY = RAW_KEY.replace(/^Bearer\s+/i, "").trim();
 
-// MISSION CRITICAL: Use only ONE canonical header as requested
-const AUTH_HEADERS = {
+const HEADERS = {
     'x-api-key': CLEAN_KEY,
+    'cache-control': 'no-cache',
     'Content-Type': 'application/json'
 };
 
 const aptosConfig = new AptosConfig({
     network: Network.TESTNET,
-    fullnode: LEDGER_ENDPOINT,
+    fullnode: SHELBY_LEDGER_RPC,
 });
 
 const aptosClient = new Aptos(aptosConfig);
@@ -44,7 +45,7 @@ export async function submitVerifiedPicture(
         const commitments = await generateCommitments(provider, data);
         const totalParts = expectedTotalChunksets(commitments.raw_data_size);
 
-        // 1. REGISTER METADATA (Ledger)
+        // 1. REGISTER METADATA (Ví xác nhận)
         const payload = ShelbyBlobClient.createRegisterBlobPayload({
             account: AccountAddress.from(accountAddress),
             blobName: fileName,
@@ -55,68 +56,52 @@ export async function submitVerifiedPicture(
             encoding: 0,
         });
 
-        console.log(`[Ledger] Registering blob: ${fileName}`);
         const tx = await signAndSubmitTransaction({ data: payload });
         await aptosClient.waitForTransaction({ transactionHash: tx.hash });
 
-        // 2. MULTIPART UPLOAD (Storage - Discrete URL)
-        console.log(`[Storage] Initializing Upload at: ${STORAGE_ENDPOINT}/v1/multipart-uploads`);
-        const initResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads`, {
+        // 2. INITIALIZING UPLOAD
+        const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
             method: 'POST',
-            headers: AUTH_HEADERS,
+            headers: HEADERS,
             body: JSON.stringify({
                 rawAccount: accountAddress,
                 rawBlobName: fileName,
-                rawBlobSize: data.length, // Total file size (Essential for some gateways)
-                rawPartSize: data.length  // Size of this specific part
+                rawBlobSize: data.length
             })
         });
 
-        if (!initResponse.ok) {
-            const errBody = await initResponse.text();
-            throw new Error(`Init Fail: ${initResponse.status} - ${errBody}`);
-        }
-
         const resData = await initResponse.json();
-        // UNIVERSAL EXTRACTOR: Support camelCase (uploadId), snake_case (upload_id), and nested structures
-        const uploadId = resData.uploadId ||
-            resData.upload_id ||
-            resData.data?.uploadId ||
-            resData.data?.upload_id ||
-            resData.id;
+        
+        // --- ĐOẠN FIX CHÍ MẠNG Ở ĐÂY ---
+        // Server của ông trả về uploadId (CamelCase), phải bắt đúng tên này!
+        const uploadId = resData.uploadId || resData.upload_id || resData.data?.uploadId || resData.id;
 
         if (!uploadId) {
-            console.error("[Shelby] Failed to extract uploadId from response:", resData);
-            throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId (Cấu trúc lạ: ${JSON.stringify(resData)})`);
+            console.error("[Shelby Error] Server response:", resData);
+            throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId. Server trả về: ${JSON.stringify(resData)}`);
         }
 
-        console.log(`[Storage] Captured ID: ${uploadId}. Proceeding to Part 0...`);
-        // 3. UPLOAD PART (Discrete URL with Uint8Array body)
-        const partResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/parts/0`, {
+        // 3. UPLOAD PART 0
+        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
-            headers: { ...AUTH_HEADERS, 'Content-Type': 'application/octet-stream' },
-            body: data // Use Uint8Array directly for binary integrity
+            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+            body: data 
         });
 
-        if (!partResponse.ok) throw new Error(`Part Upload Fail: ${partResponse.status}`);
+        if (!partResponse.ok) throw new Error("Upload Part Fail");
 
         // 4. COMPLETE UPLOAD
-        const finalizeResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/complete`, {
+        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
             method: 'POST',
-            headers: AUTH_HEADERS,
+            headers: HEADERS,
             body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
         });
 
-        if (!finalizeResponse.ok) throw new Error("Complete Upload Fail");
+        if (!finalizeResponse.ok) throw new Error("Finalize Fail");
 
-        console.log(`[Shelby Sync] Mission Accomplished! Tx: ${tx.hash}`);
         return tx;
     } catch (error: any) {
-        console.error("[Shelby Error]:", error);
+        console.error("[Shelby Critical Error]:", error);
         throw error;
     }
-}
-
-export async function fetchLeaderboard() {
-    return [];
 }
