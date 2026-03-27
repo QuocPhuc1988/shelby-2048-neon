@@ -310,13 +310,19 @@ export default function Home() {
                   <Send size={24} className="group-hover:translate-x-1 transition-transform" /> SENT PICTURE
                 </button>
               ) : (syncStatus === 'success' && lastTxHash) ? (
-                <a
-                  href={`https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`}
-                  target="_blank"
+                <button
+                  onClick={() => {
+                    const url = `https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`;
+                    if (!lastTxHash || lastTxHash === "SUCCESS_ON_CHAIN") {
+                      console.error("LỖI: Mã giao dịch không hợp lệ để mở Explorer.");
+                      return;
+                    }
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
                   className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500"
                 >
                   <ExternalLink size={24} /> VIEW ON EXPLORER
-                </a>
+                </button>
               ) : (
                 <button
                   disabled
