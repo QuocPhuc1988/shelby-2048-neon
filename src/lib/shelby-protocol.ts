@@ -78,15 +78,19 @@ export async function submitVerifiedPicture(
         }
 
         const resData = await initResponse.json();
-        // Robust extraction: support both top-level and data-wrapped upload_id
-        const uploadId = resData.upload_id || resData.data?.upload_id || resData.id;
+        // UNIVERSAL EXTRACTOR: Support camelCase (uploadId), snake_case (upload_id), and nested structures
+        const uploadId = resData.uploadId ||
+            resData.upload_id ||
+            resData.data?.uploadId ||
+            resData.data?.upload_id ||
+            resData.id;
 
         if (!uploadId) {
             console.error("[Shelby] Failed to extract uploadId from response:", resData);
-            throw new Error("SERVER_ERROR: Không thể lấy mã uploadId túi (Missing ID)");
+            throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId (Cấu trúc lạ: ${JSON.stringify(resData)})`);
         }
 
-        console.log(`[Storage] Uploading Binary Part 0 to ID: ${uploadId}...`);
+        console.log(`[Storage] Captured ID: ${uploadId}. Proceeding to Part 0...`);
         // 3. UPLOAD PART (Discrete URL with Uint8Array body)
         const partResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
