@@ -88,28 +88,29 @@ export async function submitVerifiedPicture(
         if (!uploadId) {
             console.error("[Shelby Error] Server response:", resData);
             throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId. Server trả về: ${JSON.stringify(resData)}`);
-
-            // 3. UPLOAD PART 0
-            const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
-                method: 'PUT',
-                headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
-                body: data
-            });
-
-            if (!partResponse.ok) throw new Error("Upload Part Fail");
-
-            // 4. COMPLETE UPLOAD
-            const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
-                method: 'POST',
-                headers: HEADERS,
-                body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
-            });
-
-            if (!finalizeResponse.ok) throw new Error("Finalize Fail");
-
-            return tx;
-        } catch (error: any) {
-            console.error("[Shelby Critical Error]:", error);
-            throw error;
         }
+
+        // 3. UPLOAD PART 0
+        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
+            method: 'PUT',
+            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+            body: data
+        });
+
+        if (!partResponse.ok) throw new Error("Upload Part Fail");
+
+        // 4. COMPLETE UPLOAD
+        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
+        });
+
+        if (!finalizeResponse.ok) throw new Error("Finalize Fail");
+
+        return tx;
+    } catch (error: any) {
+        console.error("[Shelby Critical Error]:", error);
+        throw error;
     }
+}
