@@ -10,10 +10,57 @@ import { submitVerifiedPicture, fetchLeaderboard, syncPlayerState, fetchPlayerSt
 import html2canvas from 'html2canvas';
 
 export default function Home() {
-  const { score, initGame, gameOver, isShaking, startTime, endTime, loadGameFromSnapshot } = useGameStore();
+  const { score, initGame, gameOver, isShaking, startTime, endTime, loadGameFromSnapshot, move } = useGameStore();
   const { connected, account, signAndSubmitTransaction } = useWallet();
   const [hasMounted, setHasMounted] = useState(false);
   const [nickname, setNickname] = useState('Anony_Shelby');
+
+  // SYNC STATES
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'capturing' | 'signing' | 'uploading' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+
+  // MOVEMENT CONTROLS
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (syncStatus !== 'idle' || gameOver) return;
+
+      switch (e.key) {
+        case 'ArrowUp': case 'w': case 'W': move('up'); break;
+        case 'ArrowDown': case 's': case 'S': move('down'); break;
+        case 'ArrowLeft': case 'a': case 'A': move('left'); break;
+        case 'ArrowRight': case 'd': case 'D': move('right'); break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [move, syncStatus, gameOver]);
+
+  // TOUCH SWIPE LOGIC
+  const [touchStart, setTouchStart] = useState<{ x: number, y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart || syncStatus !== 'idle' || gameOver) return;
+
+    const dx = e.changedTouches[0].clientX - touchStart.x;
+    const dy = e.changedTouches[0].clientY - touchStart.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (Math.max(absX, absY) > 30) {
+      if (absX > absY) {
+        move(dx > 0 ? 'right' : 'left');
+      } else {
+        move(dy > 0 ? 'down' : 'up');
+      }
+    }
+    setTouchStart(null);
+  };
 
   // AUTO-RESTORE SESSION
   useEffect(() => {
@@ -32,11 +79,6 @@ export default function Home() {
       restoreSession();
     }
   }, [connected, account, loadGameFromSnapshot]);
-
-  // SYNC STATES
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'capturing' | 'signing' | 'uploading' | 'success' | 'error'>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
   const handleManualSync = async () => {
     if (!connected || !account || syncStatus !== 'idle') return;
@@ -105,6 +147,7 @@ export default function Home() {
       setSyncStatus('error');
       setErrorMessage(e.message || "Đã có lỗi xảy ra.");
     } finally {
+      const { setPaused } = useGameStore.getState();
       setPaused(false); // 4. UNPAUSE
     }
   };
@@ -132,7 +175,10 @@ export default function Home() {
   if (!hasMounted) return null;
 
   return (
-    <main className={`min-h-screen bg-[#060608] text-white flex flex-col items-center p-4 md:p-8 font-sans transition-all overscroll-none overflow-x-hidden ${isShaking ? 'shake-active' : ''}`}>
+    <main
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      className={`min-h-screen bg-[#060608] text-white flex flex-col items-center p-4 md:p-8 font-sans transition-all overscroll-none overflow-x-hidden ${isShaking ? 'shake-active' : ''}`}>
 
       <div className="w-full max-w-[500px] flex flex-col gap-8 items-center relative">
 
