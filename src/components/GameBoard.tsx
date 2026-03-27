@@ -21,20 +21,36 @@ const TILE_COLORS: Record<number, string> = {
 const GameBoard: React.FC = () => {
     const { tiles } = useGameStore();
 
+    // JS-based pixel calculation (Safer for html2canvas than CSS calc)
+    const [boardSize, setBoardSize] = React.useState(420);
+    const gap = 12;
+    const cellSize = (boardSize - (gap * 5)) / 4;
+
+    React.useEffect(() => {
+        const updateSize = () => {
+            const width = Math.min(window.innerWidth * 0.9, 420);
+            setBoardSize(width);
+        };
+        updateSize();
+        window.addEventListener('resize', updateSize);
+        return () => window.removeEventListener('resize', updateSize);
+    }, []);
+
     return (
-        <div id="game-board-capture" className="game-container box-border shadow-2xl mx-auto overflow-hidden">
+        <div id="game-board-capture" className="game-container box-border shadow-2xl mx-auto overflow-hidden"
+            style={{ width: boardSize, height: boardSize, padding: gap }}>
             {/* Background Cell Grid */}
-            <div className="grid-background">
+            <div className="grid-background" style={{ padding: gap, gap }}>
                 {Array.from({ length: 16 }).map((_, i) => (
                     <div key={i} className="grid-cell" />
                 ))}
             </div>
 
             {/* Tile Layer (Web2 Sliding Logic) */}
-            <div className="tile-layer">
+            <div className="tile-layer" style={{ padding: gap }}>
                 <AnimatePresence>
                     {tiles.map((tile) => (
-                        <TileItem key={tile.id} tile={tile} />
+                        <TileItem key={tile.id} tile={tile} gap={gap} cellSize={cellSize} />
                     ))}
                 </AnimatePresence>
             </div>
@@ -42,10 +58,10 @@ const GameBoard: React.FC = () => {
     );
 };
 
-const TileItem: React.FC<{ tile: Tile }> = ({ tile }) => {
-    // Standard calc mapping: x/y [0-3] -> pixel positions via CSS variables
-    const xPos = `calc(${tile.x} * (var(--cell-size) + var(--grid-gap)))`;
-    const yPos = `calc(${tile.y} * (var(--cell-size) + var(--grid-gap)))`;
+const TileItem: React.FC<{ tile: Tile, gap: number, cellSize: number }> = ({ tile, gap, cellSize }) => {
+    // Explicit pixel calculation for capture stability
+    const xPos = tile.x * (cellSize + gap);
+    const yPos = tile.y * (cellSize + gap);
 
     return (
         <motion.div
@@ -53,7 +69,6 @@ const TileItem: React.FC<{ tile: Tile }> = ({ tile }) => {
             animate={{
                 scale: 1,
                 opacity: 1,
-                // Using x/y for high-performance sliding
                 x: xPos,
                 y: yPos,
             }}
@@ -66,10 +81,10 @@ const TileItem: React.FC<{ tile: Tile }> = ({ tile }) => {
             }}
             className={`absolute flex items-center justify-center rounded-lg text-2xl md:text-3xl font-black select-none
             ${TILE_COLORS[tile.value] || 'bg-[#ffc107] text-white shadow-xl'}
-            ${tile.mergedFrom ? 'z-20' : 'z-10'}`} // Source of merges slides OVER other tiles
+            ${tile.mergedFrom ? 'z-20' : 'z-10'}`}
             style={{
-                width: 'var(--cell-size)',
-                height: 'var(--cell-size)',
+                width: cellSize,
+                height: cellSize,
                 left: 0,
                 top: 0,
             }}

@@ -58,76 +58,60 @@ export default function Home() {
     try {
       // 1. CAPTURE PHASE
       if (certificateRef.current) {
-        // Bring to foreground for clean capture
         certificateRef.current.style.top = '0';
         certificateRef.current.style.left = '0';
         certificateRef.current.style.opacity = '1';
         certificateRef.current.style.visibility = 'visible';
       }
 
-      // 2s Stabilization Buffer (Vital for high-res rendering)
-      window.scrollTo(0, 0);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Delay recommended by user (800ms) for animation finish
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-      const captureTarget = certificateRef.current;
+      const captureTarget = document.getElementById('game-board-capture');
       if (!captureTarget) throw new Error("Capture target missing");
 
       const canvas = await html2canvas(captureTarget, {
-        backgroundColor: '#000000',
-        scale: 2, // Stable high-res
-        logging: false,
         useCORS: true,
-        allowTaint: true,
-        width: 1080,
-        height: 1080,
+        scale: 2,
+        backgroundColor: '#111116',
+        logging: false,
       });
 
       if (certificateRef.current) {
-        // Hide again
         certificateRef.current.style.top = '-5000px';
         certificateRef.current.style.left = '-5000px';
       }
 
-      const quality = fileFormat === 'image/jpeg' ? 0.8 : undefined;
-      const extension = fileFormat === 'image/png' ? 'png' : 'jpg';
+      // 2. BLOB GENERATION
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setSyncStatus('error');
+          setErrorMessage("Lỗi khởi tạo ảnh.");
+          return;
+        }
 
-      // 2. BLOB GENERATION (Promise-wrapped for reliability)
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, fileFormat, quality));
+        console.log(`[Sync] Image ready: ${blob.size} bytes`);
 
-      if (!blob || blob.size < 100) {
-        console.error("Capture failed: Blob is empty or too small", blob?.size);
-        setSyncStatus('error');
-        setErrorMessage("Lỗi khởi tạo ảnh. Vui lòng thử lại.");
-        return;
-      }
+        // 3. SIGNING & UPLOAD
+        setSyncStatus('signing');
+        try {
+          await submitVerifiedPicture(
+            signAndSubmitTransaction,
+            account!.address.toString(),
+            nickname || null,
+            score,
+            blob
+          );
 
-      console.log(`Capture Success: ${blob.size} bytes | Format: ${fileFormat}`);
-
-      // 3. SIGNING PHASE
-      setSyncStatus('signing');
-      try {
-        const response = await submitVerifiedPicture(
-          signAndSubmitTransaction,
-          account!.address.toString(),
-          nickname || 'Anony_Shelby',
-          score,
-          blob,
-          extension as any
-        );
-
-        // 4. SUCCESS
-        setSyncStatus('success');
-        setErrorMessage(null);
-        const txHash = response.hash || response.transactionHash;
-        setLastTxHash(txHash);
-
-        const identity = (nickname && nickname !== 'Anony_Shelby') ? nickname : `${account!.address.toString().slice(0, 6)}...${account!.address.toString().slice(-4)}`;
-        console.log(`Verified Sync Success [${identity}]:`, txHash);
-      } catch (txError: any) {
-        console.error("Submission failed", txError);
-        setSyncStatus('error');
-        setErrorMessage(txError.message || "Đã có lỗi xảy ra. Vui lòng thử lại.");
-      }
+          setSyncStatus('success');
+          setErrorMessage(null);
+          setLastTxHash('SUCCESS_ON_CHAIN'); // Placeholder as SDK method is high-level now
+        } catch (txError: any) {
+          console.error("Submission failed", txError);
+          setSyncStatus('error');
+          setErrorMessage(txError.message || "Đã có lỗi xảy ra.");
+        }
+      }, 'image/png');
     } catch (e: any) {
       console.error("Sync flow failed", e);
       setSyncStatus('error');
