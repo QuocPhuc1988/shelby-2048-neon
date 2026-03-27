@@ -62,20 +62,21 @@ export default function Home() {
         certificateRef.current.style.visibility = 'visible';
       }
 
-      // Stability Buffer: Scroll to top and wait for DOM stabilization
+      // 2.5s Stabilization Buffer (User requested patience for quality)
       window.scrollTo(0, 0);
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 2500));
 
-      const element = document.body;
-      const canvas = await html2canvas(element, {
-        backgroundColor: '#060608',
-        scale: 2,
+      const captureTarget = certificateRef.current;
+      if (!captureTarget) throw new Error("Capture target missing");
+
+      const canvas = await html2canvas(captureTarget, {
+        backgroundColor: '#000000',
+        scale: 3, // Ultra-high resolution
         logging: false,
         useCORS: true,
         allowTaint: true,
-        scrollX: 0, scrollY: 0,
-        windowWidth: document.documentElement.offsetWidth,
-        windowHeight: document.documentElement.offsetHeight,
+        width: 1080, // Square high-res card
+        height: 1080,
       });
 
       if (certificateRef.current) {
@@ -211,187 +212,211 @@ export default function Home() {
         </footer>
       </div>
 
-      {/* FULL PAGE DYNAMIC CERTIFICATE (Capture Overlay) */}
+      {/* CLEAN SPEEDRUN CERTIFICATE (Digital Card) */}
       <div
         ref={certificateRef}
-        className="fixed inset-0 z-[999] bg-black/98 backdrop-blur-2xl pointer-events-none opacity-0 invisible flex flex-col items-center justify-center p-12 border-[24px] border-[#ff2a75] text-center"
+        className="fixed top-[-5000px] left-[-5000px] z-[999] bg-black flex flex-col items-center justify-center p-20 text-center border-[16px] border-[#ff2a75] shadow-[0_0_100px_rgba(255,42,117,0.5)]"
+        style={{ width: '1080px', height: '1080px', opacity: 1, visibility: 'visible' }}
       >
-        <Trophy size={140} className="text-[#ff2a75] mb-8" />
-        <h2 className="text-7xl font-black text-white italic tracking-tighter mb-16 uppercase drop-shadow-[0_0_30px_rgba(255,42,117,1)]">SHELBYNET OFFICAL RUN</h2>
+        <div className="absolute inset-0 bg-gradient-to-br from-[#ff2a75]/10 to-cyan-500/10" />
 
-        <div className="w-full max-w-[900px] border-y-4 border-white/10 py-16 mb-16 space-y-12">
-          <div className="flex justify-between text-left">
-            <div>
-              <p className="text-xs text-gray-500 uppercase font-black tracking-[0.6em] mb-4">Player Master</p>
-              <p className="text-5xl font-black text-white uppercase">{nickname}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500 uppercase font-black tracking-[0.6em] mb-4">On-chain Proof</p>
-              <p className="text-2xl font-black text-cyan-400 tabular-nums uppercase whitespace-nowrap">SCORE: {score} | TIME: {totalTime}S</p>
-            </div>
+        <Trophy size={200} className="text-[#ff2a75] mb-12 drop-shadow-[0_0_30px_rgba(255,42,117,1)]" />
+
+        <h2 className="text-8xl font-black text-white italic tracking-tighter mb-4 uppercase">
+          PERFECT RUN
+        </h2>
+        <p className="text-xl font-bold tracking-[0.5em] text-cyan-400 uppercase mb-20 italic">
+          SHELBYNET VERIFIED
+        </p>
+
+        <div className="w-full bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[40px] p-16 space-y-12 mb-16 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5"><Zap size={100} className="text-white" /></div>
+
+          <div className="flex flex-col items-center">
+            <span className="text-sm font-black text-gray-500 uppercase tracking-[0.8em] mb-4">Player Identity</span>
+            <span className="text-6xl font-black text-white uppercase tracking-tight">
+              {nickname && nickname !== 'Anony_Shelby' ? nickname : `${account?.address.toString().slice(0, 6)}...${account?.address.toString().slice(-4)}`}
+            </span>
+            <span className="text-xs font-bold text-cyan-400 mt-4 opacity-50 font-mono tracking-widest">{account?.address.toString()}</span>
           </div>
 
-          <div className="text-center pt-8 border-t border-white/5">
-            <p className="text-2xl font-black text-white uppercase tracking-widest italic opacity-80 underline underline-offset-8 decoration-cyan-500">
-              Player: {nickname} | Wallet: {account?.address?.toString()}
-            </p>
+          <div className="grid grid-cols-2 gap-8 border-t border-white/10 pt-12">
+            <div className="flex flex-col">
+              <span className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Final Score</span>
+              <span className="text-7xl font-black text-[#ff2a75]">{score.toLocaleString()}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Total Time</span>
+              <span className="text-7xl font-black text-cyan-400">{totalTime}S</span>
+            </div>
           </div>
         </div>
 
-        <p className="text-sm font-black text-gray-600 tracking-[1.5em] uppercase italic opacity-50">CRYPTOGRAPHICALLY VERIFIED ON SHELBY PROTOCOL</p>
+        <div className="flex items-center gap-4 text-gray-700 font-bold tracking-[1em] uppercase text-[10px] mt-12 italic opacity-60">
+          <ShieldCheck size={16} /> VALIDATED ON SHELBY PROTOCOL
+        </div>
       </div>
 
-      {/* GAME OVER TERMINAL */}
-      {gameOver && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500 overflow-y-auto">
-          {syncStatus === 'success' ? (
-            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700">
-              <ShieldCheck size={120} className="text-green-500 mb-6 drop-shadow-[0_0_30px_rgba(34,197,94,0.5)]" />
-              <h2 className="text-6xl font-black text-white uppercase italic tracking-tighter mb-2">RUN SYNCED</h2>
-              <p className="text-gray-400 font-bold mb-10 text-lg uppercase tracking-widest">Asset Identified on Shelbynet</p>
-            </div>
-          ) : syncStatus === 'error' ? (
-            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700 max-w-[400px]">
-              <AlertTriangle size={80} className="text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.5)]" />
-              <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-4">LỖI ĐỒNG BỘ</h2>
-              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl mb-6">
-                <p className="text-red-400 font-bold text-sm leading-relaxed uppercase tracking-wider">
-                  {errorMessage}
-                </p>
-              </div>
-              <button
-                onClick={() => { setSyncStatus('idle'); setErrorMessage(null); }}
-                className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl border border-white/10 transition-all uppercase tracking-[0.2em] text-xs"
-              >
-                THỬ LẠI
-              </button>
-            </div>
-          ) : (
-            <>
-              <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
-              <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
-              <p className="text-cyan-400 font-bold mb-10 uppercase tracking-widest">Archive Certified Image</p>
-            </>
-          )}
+      <p className="text-sm font-black text-gray-600 tracking-[1.5em] uppercase italic opacity-50">CRYPTOGRAPHICALLY VERIFIED ON SHELBY PROTOCOL</p>
+    </div>
 
-          {syncStatus === 'idle' && (
-            <div className="flex gap-4 mb-10 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[350px]">
-              <button
-                onClick={() => setFileFormat('image/png')}
-                className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/png' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,1)]' : 'bg-white/5 text-gray-500'}`}
-              >
-                {fileFormat === 'image/png' && <CheckCircle size={10} />} .PNG
-              </button>
-              <button
-                onClick={() => setFileFormat('image/jpeg')}
-                className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/jpeg' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,1)]' : 'bg-white/5 text-gray-500'}`}
-              >
-                {fileFormat === 'image/jpeg' && <CheckCircle size={10} />} .JPG
-              </button>
+      {/* GAME OVER TERMINAL */ }
+  {
+    gameOver && (
+      <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500 overflow-y-auto">
+        {syncStatus === 'success' ? (
+          <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700">
+            <ShieldCheck size={120} className="text-green-500 mb-6 drop-shadow-[0_0_30px_rgba(34,197,94,0.5)]" />
+            <h2 className="text-6xl font-black text-white uppercase italic tracking-tighter mb-2">RUN SYNCED</h2>
+            <p className="text-gray-400 font-bold mb-10 text-lg uppercase tracking-widest">Asset Identified on Shelbynet</p>
+          </div>
+        ) : syncStatus === 'error' ? (
+          <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700 max-w-[400px]">
+            <AlertTriangle size={80} className="text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.5)]" />
+            <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-4">LỖI ĐỒNG BỘ</h2>
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl mb-6">
+              <p className="text-red-400 font-bold text-sm leading-relaxed uppercase tracking-wider">
+                {errorMessage}
+              </p>
             </div>
-          )}
-
-          <div className="flex flex-col gap-3 w-full max-w-[340px]">
-            {syncStatus === 'idle' ? (
-              <button
-                onClick={() => setShowConsent(true)}
-                className="w-full py-6 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_60px_rgba(255,42,117,0.6)] transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-widest text-xl group"
-              >
-                <Send size={24} className="group-hover:translate-x-1 transition-transform" /> SENT PICTURE
-              </button>
-            ) : (syncStatus === 'success' && lastTxHash) ? (
-              <a
-                href={`https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`}
-                target="_blank"
-                className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500"
-              >
-                <ExternalLink size={24} /> VIEW ON EXPLORER
-              </a>
-            ) : (
-              <button
-                disabled
-                className="w-full py-6 bg-[#111116] text-[#ff2a75] font-black rounded-xl border border-white/5 flex items-center justify-center gap-4 uppercase tracking-widest text-xl cursor-wait"
-              >
-                <Loader2 size={24} className="animate-spin" /> {syncStatus.toUpperCase()}ING...
-              </button>
-            )}
-
             <button
-              onClick={() => { setLastTxHash(null); setSyncStatus('idle'); initGame(); }}
-              className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline underline-offset-8"
+              onClick={() => { setSyncStatus('idle'); setErrorMessage(null); }}
+              className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl border border-white/10 transition-all uppercase tracking-[0.2em] text-xs"
             >
-              Reset Speedrun
+              THỬ LẠI
+            </button>
+          </div>
+        ) : (
+          <>
+            <ImageIcon size={80} className="text-[#ff2a75] mb-4 animate-pulse" />
+            <h2 className="text-5xl font-black mb-1 tracking-tighter text-white italic uppercase">SESSION ENDED</h2>
+            <p className="text-cyan-400 font-bold mb-10 uppercase tracking-widest">Archive Certified Image</p>
+          </>
+        )}
+
+        {syncStatus === 'idle' && (
+          <div className="flex gap-4 mb-10 bg-[#111116] p-4 rounded-2xl border border-white/5 w-full max-w-[350px]">
+            <button
+              onClick={() => setFileFormat('image/png')}
+              className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/png' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,1)]' : 'bg-white/5 text-gray-500'}`}
+            >
+              {fileFormat === 'image/png' && <CheckCircle size={10} />} .PNG
+            </button>
+            <button
+              onClick={() => setFileFormat('image/jpeg')}
+              className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${fileFormat === 'image/jpeg' ? 'bg-[#ff2a75] text-white shadow-[0_0_20px_rgba(255,42,117,1)]' : 'bg-white/5 text-gray-500'}`}
+            >
+              {fileFormat === 'image/jpeg' && <CheckCircle size={10} />} .JPG
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 w-full max-w-[340px]">
+          {syncStatus === 'idle' ? (
+            <button
+              onClick={() => setShowConsent(true)}
+              className="w-full py-6 bg-[#ff2a75] hover:bg-[#ff4b8e] text-white font-black rounded-xl shadow-[0_0_60px_rgba(255,42,117,0.6)] transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-widest text-xl group"
+            >
+              <Send size={24} className="group-hover:translate-x-1 transition-transform" /> SENT PICTURE
+            </button>
+          ) : (syncStatus === 'success' && lastTxHash) ? (
+            <a
+              href={`https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`}
+              target="_blank"
+              className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500"
+            >
+              <ExternalLink size={24} /> VIEW ON EXPLORER
+            </a>
+          ) : (
+            <button
+              disabled
+              className="w-full py-6 bg-[#111116] text-[#ff2a75] font-black rounded-xl border border-white/5 flex items-center justify-center gap-4 uppercase tracking-widest text-xl cursor-wait"
+            >
+              <Loader2 size={24} className="animate-spin" /> {syncStatus.toUpperCase()}ING...
+            </button>
+          )}
+
+          <button
+            onClick={() => { setLastTxHash(null); setSyncStatus('idle'); initGame(); }}
+            className="mt-8 text-white/20 font-black uppercase text-[10px] tracking-[0.5em] hover:text-white transition-all underline underline-offset-8"
+          >
+            Reset Speedrun
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  {/* CONSENT MODAL (Sync UI Ported from External Build) */ }
+  {
+    showConsent && (
+      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
+        <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-3xl text-left flex flex-col overflow-hidden animate-in zoom-in duration-300">
+          <div className="p-8 pb-4">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500">
+                <AlertTriangle size={32} />
+              </div>
+              <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">Verified Sync</h3>
+            </div>
+            <p className="text-gray-400 font-bold text-base leading-relaxed mb-8">
+              Bạn có đồng ý chụp ảnh màn hình kết quả và sao lưu lên <span className="text-white italic">Shelby Protocol</span> không? Tấm ảnh này sẽ được lưu trữ công khai làm bằng chứng Speedrun.
+            </p>
+          </div>
+
+          {/* UI PORT: DIALOG-FOOTER Style */}
+          <div className="bg-[#16161f] p-6 flex justify-between items-center border-t border-white/5 gap-4">
+            <button
+              onClick={() => setShowConsent(false)}
+              className="px-6 py-3 text-gray-500 font-black rounded-xl uppercase tracking-widest hover:text-white transition-all active:scale-95 text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConsentAgree}
+              className="px-10 py-3 bg-[#ff2a75] text-white font-black rounded-xl uppercase tracking-widest shadow-[0_0_20px_rgba(255,42,117,0.4)] active:scale-95 transition-all text-xs"
+            >
+              Upload
             </button>
           </div>
         </div>
-      )}
+      </div>
+    )
+  }
 
-      {/* CONSENT MODAL (Sync UI Ported from External Build) */}
-      {showConsent && (
-        <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
-          <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-3xl text-left flex flex-col overflow-hidden animate-in zoom-in duration-300">
-            <div className="p-8 pb-4">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500">
-                  <AlertTriangle size={32} />
-                </div>
-                <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">Verified Sync</h3>
-              </div>
-              <p className="text-gray-400 font-bold text-base leading-relaxed mb-8">
-                Bạn có đồng ý chụp ảnh màn hình kết quả và sao lưu lên <span className="text-white italic">Shelby Protocol</span> không? Tấm ảnh này sẽ được lưu trữ công khai làm bằng chứng Speedrun.
-              </p>
-            </div>
-
-            {/* UI PORT: DIALOG-FOOTER Style */}
-            <div className="bg-[#16161f] p-6 flex justify-between items-center border-t border-white/5 gap-4">
-              <button
-                onClick={() => setShowConsent(false)}
-                className="px-6 py-3 text-gray-500 font-black rounded-xl uppercase tracking-widest hover:text-white transition-all active:scale-95 text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConsentAgree}
-                className="px-10 py-3 bg-[#ff2a75] text-white font-black rounded-xl uppercase tracking-widest shadow-[0_0_20px_rgba(255,42,117,0.4)] active:scale-95 transition-all text-xs"
-              >
-                Upload
-              </button>
-            </div>
+  {/* RANKING MODAL */ }
+  {
+    showRanking && (
+      <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-2xl relative flex flex-col max-h-[80vh]">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#16161f] rounded-t-3xl text-indigo-400">
+            <Globe />
+            <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white font-black">Global Global Ranking</h3>
+            <button onClick={() => setShowRanking(false)} className="p-2 text-white/20 hover:text-white"><X /></button>
           </div>
-        </div>
-      )}
-
-      {/* RANKING MODAL */}
-      {showRanking && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#111116] w-full max-w-[400px] rounded-3xl border border-white/10 shadow-2xl relative flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#16161f] rounded-t-3xl text-indigo-400">
-              <Globe />
-              <h3 className="font-black text-xl uppercase tracking-tighter ml-2 flex-grow text-white font-black">Global Global Ranking</h3>
-              <button onClick={() => setShowRanking(false)} className="p-2 text-white/20 hover:text-white"><X /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              <div className="flex flex-col gap-2">
-                {leaderboard.map((item, i) => (
-                  <div key={i} className="flex justify-between items-center p-4 bg-[#16161f] rounded-2xl border border-white/5">
-                    <div className="flex items-center gap-4">
-                      <span className="text-gray-600 font-black">{i + 1}</span>
-                      <div className="flex flex-col text-left">
-                        <span className="font-black text-sm text-gray-200 uppercase">{item.nickname}</span>
-                        <span className="text-[9px] text-indigo-400 font-bold">{item.time}s Speedrun</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-black text-[#ff2a75]">{item.score}</span>
-                      <p className="text-[7px] text-gray-600 font-bold uppercase tracking-widest">Points</p>
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="flex flex-col gap-2">
+              {leaderboard.map((item, i) => (
+                <div key={i} className="flex justify-between items-center p-4 bg-[#16161f] rounded-2xl border border-white/5">
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-600 font-black">{i + 1}</span>
+                    <div className="flex flex-col text-left">
+                      <span className="font-black text-sm text-gray-200 uppercase">{item.nickname}</span>
+                      <span className="text-[9px] text-indigo-400 font-bold">{item.time}s Speedrun</span>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="text-right">
+                    <span className="font-black text-[#ff2a75]">{item.score}</span>
+                    <p className="text-[7px] text-gray-600 font-bold uppercase tracking-widest">Points</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      )}
-    </main>
+      </div>
+    )
+  }
+    </main >
   );
 }
