@@ -309,19 +309,28 @@ export default function Home() {
                 >
                   <Send size={24} className="group-hover:translate-x-1 transition-transform" /> SENT PICTURE
                 </button>
-              ) : (syncStatus === 'success' && lastTxHash) ? (
+              ) : syncStatus === 'success' ? (
                 <button
+                  disabled={!lastTxHash || !lastTxHash.startsWith('0x')}
                   onClick={() => {
-                    const url = `https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`;
-                    if (!lastTxHash || lastTxHash === "SUCCESS_ON_CHAIN") {
-                      console.error("LỖI: Mã giao dịch không hợp lệ để mở Explorer.");
-                      return;
+                    const isRealHash = typeof lastTxHash === 'string' && lastTxHash.startsWith('0x') && lastTxHash.length > 10;
+                    if (isRealHash) {
+                      const url = `https://explorer.shelbynet.shelby.xyz/transaction/${lastTxHash}`;
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    } else {
+                      const message = (lastTxHash === "SUCCESS_ON_CHAIN")
+                        ? "Giao dịch đang được xác thực trên chuỗi, vui lòng đợi vài giây..."
+                        : "Chưa có mã giao dịch. Hãy thực hiện Sync trước!";
+                      alert(message);
                     }
-                    window.open(url, '_blank', 'noopener,noreferrer');
                   }}
-                  className="w-full py-6 bg-green-500/10 hover:bg-green-500/20 text-green-400 font-black rounded-xl border-2 border-green-500/30 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500"
+                  className={`w-full py-6 font-black rounded-xl border-2 flex items-center justify-center gap-4 transition-all uppercase tracking-widest text-xl animate-in fade-in duration-500 ${(!lastTxHash || !lastTxHash.startsWith('0x'))
+                      ? "opacity-50 cursor-not-allowed bg-gray-800 border-gray-700 text-gray-500"
+                      : "bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/30"
+                    }`}
                 >
-                  <ExternalLink size={24} /> VIEW ON EXPLORER
+                  {lastTxHash && lastTxHash.startsWith('0x') ? <ExternalLink size={24} /> : <Loader2 size={24} className="animate-spin" />}
+                  {lastTxHash && lastTxHash.startsWith('0x') ? "VIEW ON EXPLORER" : "VALIDATING..."}
                 </button>
               ) : (
                 <button
