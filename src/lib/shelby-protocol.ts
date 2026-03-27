@@ -6,6 +6,7 @@ import {
     expectedTotalChunksets
 } from "@shelby-protocol/sdk/browser";
 import { Aptos, AptosConfig, Network, AccountAddress } from "@aptos-labs/ts-sdk";
+import { GameSnapshot } from "../store/useGameStore";
 
 const SHELBY_RPC_ROOT = "https://api.shelbynet.shelby.xyz";
 const SHELBY_STORAGE_RPC = `${SHELBY_RPC_ROOT}/shelby`;
@@ -27,93 +28,190 @@ const aptosConfig = new AptosConfig({
 
 const aptosClient = new Aptos(aptosConfig);
 
-30: export async function submitVerifiedPicture(
-31: signAndSubmitTransaction: any,
-32: accountAddress: string,
-33: nickname: string | null,
-34: score: number,
-35: imageBlob: Blob
-36: ) {
-    37: try {
-        38:         // NÂNG CẤP: KHÓA TÊN FILE NGAY TỪ ĐẦU (Đảm bảo On-chain & Off-chain sinh đôi cùng trứng)
-        39: const playerTag = nickname || `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}`;
-        40: const finalFileName = `2048_Shelby_${playerTag.replace(/[^a-z0-9]/gi, '_')}_${score}.png`;
-        41:
-        42: const arrayBuffer = await imageBlob.arrayBuffer();
-        43: const data = new Uint8Array(arrayBuffer);
-        44: const cleanSize = Number(data.length);
-        45:
-        46: if (isNaN(cleanSize) || cleanSize <= 0) {
-            47: throw new Error("LỖI LOGIC: Kích thước ảnh không xác định (NaN)");
-            48:
-        }
-        49:
-        50: const provider = await createDefaultErasureCodingProvider();
-        51: const commitments = await generateCommitments(provider, data);
-        52: const totalParts = expectedTotalChunksets(commitments.raw_data_size);
-        53:
-        54:         // 1. REGISTER METADATA (Dùng finalFileName)
-        55: const payload = ShelbyBlobClient.createRegisterBlobPayload({
-            56: account: AccountAddress.from(accountAddress),
-            57: blobName: finalFileName,
-            58: blobMerkleRoot: commitments.blob_merkle_root,
-            59: numChunksets: totalParts,
-            60: expirationMicros: (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000,
-            61: blobSize: Number(commitments.raw_data_size),
-            62: encoding: 0,
-            63:         });
-    64:
-    65: console.log(`[Ledger] Registering blob: ${finalFileName}`);
-    66: const tx = await signAndSubmitTransaction({ data: payload });
-    67: await aptosClient.waitForTransaction({ transactionHash: tx.hash });
-    68:
-    69:         // 2. INITIALIZING UPLOAD (Dùng finalFileName + Ép kiểu sạch)
-    70: console.log(`[Storage] Xin mã vận đơn cho: ${finalFileName} (${cleanSize} bytes)`);
-    71: const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
-        72: method: 'POST',
-        73: headers: HEADERS,
-        74: body: JSON.stringify({
-            75: rawAccount: accountAddress,
-            76: rawBlobName: finalFileName,
-            77: partSize: cleanSize,
-            78: rawBlobSize: cleanSize,
-            79: rawPartSize: cleanSize,
-            80: blobSize: cleanSize
-81:             })
-82:         });
+/**
+ * Syncs the current game state JSON to Shelby Storage.
+ */
+export async function syncPlayerState(
+    signAndSubmitTransaction: any,
+    accountAddress: string,
+    snapshot: GameSnapshot
+) {
+    try {
+        const fileName = `2048_Save_${accountAddress}.json`;
+        const jsonString = JSON.stringify(snapshot);
+        const data = new TextEncoder().encode(jsonString);
 
-    const resData = await initResponse.json();
+        const provider = await createDefaultErasureCodingProvider();
+        const commitments = await generateCommitments(provider, data);
+        const totalParts = expectedTotalChunksets(commitments.raw_data_size);
+        const cleanSize = Number(data.length);
 
-    // --- ĐOẠN FIX CHÍ MẠNG Ở ĐÂY ---
-    // Bắt ID (CamelCase như log đã báo)
-    const uploadId = resData.uploadId || resData.upload_id || resData.data?.uploadId || resData.id;
+        // 1. REGISTER SAVE METADATA
+        const payload = ShelbyBlobClient.createRegisterBlobPayload({
+            account: AccountAddress.from(accountAddress),
+            blobName: fileName,
+            blobMerkleRoot: commitments.blob_merkle_root,
+            numChunksets: totalParts,
+            expirationMicros: (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000,
+            blobSize: Number(commitments.raw_data_size),
+            encoding: 0,
+        });
 
-    if (!uploadId) {
-        console.error("[Shelby Error] Server response:", resData);
-        throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId. Server trả về: ${JSON.stringify(resData)}`);
+        console.log(`[Persistence] Syncing savegame: ${fileName}`);
+        const tx = await signAndSubmitTransaction({ data: payload });
+        await aptosClient.waitForTransaction({ transactionHash: tx.hash });
+
+        // 2. INITIALIZE UPLOAD
+        const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({
+                rawAccount: accountAddress,
+                rawBlobName: fileName,
+                partSize: cleanSize,
+                rawBlobSize: cleanSize
+            })
+        });
+
+        const resData = await initResponse.json();
+        const uploadId = resData.uploadId || resData.upload_id || resData.data?.uploadId || resData.id;
+        if (!uploadId) throw new Error("Failed to get uploadId for sync");
+
+        // 3. UPLOAD JSON (Part 0)
+        await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
+            method: 'PUT',
+            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+            body: data
+        });
+
+        // 4. COMPLETE
+        await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
+        });
+
+        return tx;
+    } catch (error) {
+        console.error("[Persistence Error]:", error);
+        throw error;
     }
-
-    // 3. UPLOAD PART 0
-    const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
-        method: 'PUT',
-        headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
-        body: data
-    });
-
-    if (!partResponse.ok) throw new Error("Upload Part Fail");
-
-    // 4. COMPLETE UPLOAD
-    const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
-        method: 'POST',
-        headers: HEADERS,
-        body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
-    });
-
-    if (!finalizeResponse.ok) throw new Error("Finalize Fail");
-
-    return tx;
-} catch (error: any) {
-    console.error("[Shelby Critical Error]:", error);
-    throw error;
 }
+
+/**
+ * Fetches the latest game state JSON from Shelby Storage.
+ */
+export async function fetchPlayerState(accountAddress: string): Promise<GameSnapshot | null> {
+    try {
+        const fileName = `2048_Save_${accountAddress}.json`;
+        console.log(`[Persistence] Fetching savegame: ${fileName}`);
+
+        // Note: Using storage public URL if possible, otherwise we check if it exists
+        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/blobs/${accountAddress}/${fileName}`, {
+            headers: HEADERS
+        });
+
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (e) {
+        console.warn("[Persistence] No existing save found or fetch failed.");
+        return null;
+    }
+}
+
+export async function submitVerifiedPicture(
+    signAndSubmitTransaction: any,
+    accountAddress: string,
+    nickname: string | null,
+    score: number,
+    imageBlob: Blob
+) {
+    try {
+        const playerTag = nickname || `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}`;
+        const finalFileName = `2048_Shelby_${playerTag.replace(/[^a-z0-9]/gi, '_')}_${score}.png`;
+
+        const arrayBuffer = await imageBlob.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        const cleanSize = Number(data.length);
+
+        if (isNaN(cleanSize) || cleanSize <= 0) {
+            throw new Error("LỖI LOGIC: Kích thước ảnh không xác định (NaN)");
+        }
+
+        const provider = await createDefaultErasureCodingProvider();
+        const commitments = await generateCommitments(provider, data);
+        const totalParts = expectedTotalChunksets(commitments.raw_data_size);
+
+        // 1. REGISTER METADATA
+        const payload = ShelbyBlobClient.createRegisterBlobPayload({
+            account: AccountAddress.from(accountAddress),
+            blobName: finalFileName,
+            blobMerkleRoot: commitments.blob_merkle_root,
+            numChunksets: totalParts,
+            expirationMicros: (1000 * 60 * 60 * 24 * 30 + Date.now()) * 1000,
+            blobSize: Number(commitments.raw_data_size),
+            encoding: 0,
+        });
+
+        console.log(`[Ledger] Registering blob: ${finalFileName}`);
+        const tx = await signAndSubmitTransaction({ data: payload });
+        await aptosClient.waitForTransaction({ transactionHash: tx.hash });
+
+        // 2. INITIALIZING UPLOAD
+        console.log(`[Storage] Xin mã vận đơn cho: ${finalFileName} (${cleanSize} bytes)`);
+        const initResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({
+                rawAccount: accountAddress,
+                rawBlobName: finalFileName,
+                partSize: cleanSize,
+                rawBlobSize: cleanSize,
+                rawPartSize: cleanSize,
+                blobSize: cleanSize
+            })
+        });
+
+        const resData = await initResponse.json();
+        const uploadId = resData.uploadId || resData.upload_id || resData.data?.uploadId || resData.id;
+
+        if (!uploadId) {
+            console.error("[Shelby Error] Server response:", resData);
+            throw new Error(`SERVER_ERROR: Không thể lấy mã uploadId. Server trả về: ${JSON.stringify(resData)}`);
+        }
+
+        // 3. UPLOAD PART 0
+        const partResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/parts/0`, {
+            method: 'PUT',
+            headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
+            body: data
+        });
+
+        if (!partResponse.ok) throw new Error("Upload Part Fail");
+
+        // 4. COMPLETE UPLOAD
+        const finalizeResponse = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads/${uploadId}/complete`, {
+            method: 'POST',
+            headers: HEADERS,
+            body: JSON.stringify({ partIdentifiers: [{ partNumber: 0 }] })
+        });
+
+        if (!finalizeResponse.ok) throw new Error("Finalize Fail");
+
+        return tx;
+    } catch (error: any) {
+        console.error("[Shelby Critical Error]:", error);
+        throw error;
+    }
+}
+
+export async function fetchLeaderboard(): Promise<any[]> {
+    try {
+        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/leaderboard`, { headers: HEADERS });
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.entries || [];
+    } catch (e) {
+        return [];
+    }
 }

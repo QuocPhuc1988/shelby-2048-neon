@@ -6,7 +6,18 @@ export type Tile = {
     value: number;
     x: number;
     y: number;
-    mergedFrom?: number[]; // IDs of tiles that merged into this one
+    mergedFrom?: number[];
+};
+
+export type GameSnapshot = {
+    grid: Tile[];
+    score: number;
+    status: {
+        gameOver: boolean;
+        startTime: number | null;
+        endTime: number | null;
+    };
+    timestamp: number;
 };
 
 type GameState = {
@@ -16,10 +27,14 @@ type GameState = {
     gameOver: boolean;
     isMoving: boolean;
     isShaking: boolean;
+    isPaused: boolean;
     startTime: number | null;
     endTime: number | null;
     initGame: () => void;
     move: (direction: 'up' | 'down' | 'left' | 'right') => void;
+    setPaused: (paused: boolean) => void;
+    getGameSnapshot: () => GameSnapshot;
+    loadGameFromSnapshot: (snapshot: GameSnapshot) => void;
 };
 
 const GRID_SIZE = 4;
@@ -34,6 +49,7 @@ export const useGameStore = create<GameState>()(
             gameOver: false,
             isMoving: false,
             isShaking: false,
+            isPaused: false,
             startTime: null,
             endTime: null,
 
@@ -49,14 +65,15 @@ export const useGameStore = create<GameState>()(
                     gameOver: false,
                     isMoving: false,
                     isShaking: false,
+                    isPaused: false,
                     startTime: Date.now(),
                     endTime: null
                 });
             },
 
             move: (direction) => {
-                const { tiles, score, bestScore, gameOver, isMoving } = get();
-                if (gameOver || isMoving) return;
+                const { tiles, score, bestScore, gameOver, isMoving, isPaused } = get();
+                if (gameOver || isMoving || isPaused) return;
 
                 const { nextTiles, addedScore, moved, maxMergedValue } = calculateMove(tiles, direction);
 
@@ -68,7 +85,6 @@ export const useGameStore = create<GameState>()(
                         setTimeout(() => set({ isShaking: false }), 200);
                     }
 
-                    // Wait for sliding animation (200ms) before spawning & settling
                     setTimeout(() => {
                         const finalTiles = settleMerge(nextTiles);
                         const spawnedTiles = spawnRandomTile(finalTiles);
@@ -85,6 +101,30 @@ export const useGameStore = create<GameState>()(
                     }, 200);
                 }
             },
+
+            setPaused: (paused) => set({ isPaused: paused }),
+
+            getGameSnapshot: () => {
+                const { tiles, score, gameOver, startTime, endTime } = get();
+                return {
+                    grid: tiles,
+                    score,
+                    status: { gameOver, startTime, endTime },
+                    timestamp: Date.now()
+                };
+            },
+
+            loadGameFromSnapshot: (snapshot) => {
+                set({
+                    tiles: snapshot.grid,
+                    score: snapshot.score,
+                    gameOver: snapshot.status.gameOver,
+                    startTime: snapshot.status.startTime,
+                    endTime: snapshot.status.endTime,
+                    isMoving: false,
+                    isPaused: false
+                });
+            }
         }),
         {
             name: '2048-ultimate-engine',
@@ -93,10 +133,9 @@ export const useGameStore = create<GameState>()(
     )
 );
 
-// --- Core Helper Logic (Web2 Ported) ---
+// --- Core Helper Logic (Hardcore Edition) ---
 
 function createTile(x: number, y: number, value?: number): Tile {
-    // Hardcore Probabilities remain (25% for 4, 5% for 8)
     if (!value) {
         const rand = Math.random();
         if (rand < 0.05) value = 8;
@@ -115,7 +154,6 @@ function calculateMove(tiles: Tile[], direction: string) {
     const isVertical = direction === 'up' || direction === 'down';
     const isForward = direction === 'right' || direction === 'down';
 
-    // Sort tiles so we process the ones closest to the edge first
     nextTiles.sort((a, b) => {
         if (isVertical) return isForward ? b.y - a.y : a.y - b.y;
         return isForward ? b.x - a.x : a.x - b.x;
@@ -137,7 +175,6 @@ function calculateMove(tiles: Tile[], direction: string) {
 
             if (targetTile) {
                 if (targetTile.value === tile.value && !mergedIds.has(targetTile.id) && !mergedIds.has(tile.id)) {
-                    // Merge!
                     tile.x = nextX;
                     tile.y = nextY;
                     tile.mergedFrom = [tile.id, targetTile.id];
@@ -147,7 +184,7 @@ function calculateMove(tiles: Tile[], direction: string) {
                     maxMergedValue = Math.max(maxMergedValue, tile.value * 2);
                     moved = true;
                 }
-                break; // Hit another tile, stop
+                break;
             } else {
                 currentX = nextX;
                 currentY = nextY;
@@ -169,8 +206,6 @@ function settleMerge(tiles: Tile[]): Tile[] {
         if (processedIds.has(tile.id)) return;
 
         if (tile.mergedFrom) {
-            // This is a tile that merged into another. 
-            // In our simple logic, we find its partner and create the new tile.
             const partner = tiles.find(t => t.id === tile.mergedFrom![1]);
             const newValue = tile.value * 2;
             finalTiles.push({
@@ -182,7 +217,6 @@ function settleMerge(tiles: Tile[]): Tile[] {
             processedIds.add(tile.id);
             processedIds.add(partner!.id);
         } else {
-            // Check if anyone merged into ME (shouldn't happen with our sorting but let's be safe)
             const source = tiles.find(t => t.mergedFrom?.includes(tile.id));
             if (!source) {
                 finalTiles.push(tile);
@@ -194,17 +228,24 @@ function settleMerge(tiles: Tile[]): Tile[] {
     return finalTiles;
 }
 
+/**
+ * HARDCORE MODE: Spawn 2 tiles per move.
+ */
 function spawnRandomTile(tiles: Tile[]): Tile[] {
-    const occupied = new Set(tiles.map(t => `${t.x},${t.y}`));
-    const empty: [number, number][] = [];
-    for (let x = 0; x < GRID_SIZE; x++) {
-        for (let y = 0; y < GRID_SIZE; y++) {
-            if (!occupied.has(`${x},${y}`)) empty.push([x, y]);
+    let newTiles = [...tiles];
+    for (let i = 0; i < 2; i++) {
+        const occupied = new Set(newTiles.map(t => `${t.x},${t.y}`));
+        const empty: [number, number][] = [];
+        for (let x = 0; x < GRID_SIZE; x++) {
+            for (let y = 0; y < GRID_SIZE; y++) {
+                if (!occupied.has(`${x},${y}`)) empty.push([x, y]);
+            }
         }
+        if (empty.length === 0) break;
+        const [rx, ry] = empty[Math.floor(Math.random() * empty.length)];
+        newTiles.push(createTile(rx, ry));
     }
-    if (empty.length === 0) return tiles;
-    const [rx, ry] = empty[Math.floor(Math.random() * empty.length)];
-    return [...tiles, createTile(rx, ry)];
+    return newTiles;
 }
 
 function checkGameOver(tiles: Tile[]): boolean {
