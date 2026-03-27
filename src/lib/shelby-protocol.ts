@@ -67,7 +67,8 @@ export async function submitVerifiedPicture(
             body: JSON.stringify({
                 rawAccount: accountAddress,
                 rawBlobName: fileName,
-                rawPartSize: data.length
+                rawBlobSize: data.length, // Total file size (Essential for some gateways)
+                rawPartSize: data.length  // Size of this specific part
             })
         });
 
@@ -76,21 +77,21 @@ export async function submitVerifiedPicture(
             throw new Error(`Init Fail: ${initResponse.status} - ${errBody}`);
         }
 
-        const uploadInfo = await initResponse.json();
+        const resData = await initResponse.json();
         // Robust extraction: support both top-level and data-wrapped upload_id
-        const uploadId = uploadInfo.upload_id || uploadInfo.data?.upload_id || uploadInfo.id;
+        const uploadId = resData.upload_id || resData.data?.upload_id || resData.id;
 
         if (!uploadId) {
-            console.error("[Shelby] Failed to extract uploadId from response:", uploadInfo);
-            throw new Error("SERVER_ERROR: Không thể khởi tạo phiên upload (Missing Upload ID)");
+            console.error("[Shelby] Failed to extract uploadId from response:", resData);
+            throw new Error("SERVER_ERROR: Không thể lấy mã uploadId túi (Missing ID)");
         }
 
         console.log(`[Storage] Uploading Binary Part 0 to ID: ${uploadId}...`);
-        // 3. UPLOAD PART (Discrete URL with Guard)
+        // 3. UPLOAD PART (Discrete URL with Uint8Array body)
         const partResponse = await fetch(`${STORAGE_ENDPOINT}/v1/multipart-uploads/${uploadId}/parts/0`, {
             method: 'PUT',
             headers: { ...AUTH_HEADERS, 'Content-Type': 'application/octet-stream' },
-            body: imageBlob
+            body: data // Use Uint8Array directly for binary integrity
         });
 
         if (!partResponse.ok) throw new Error(`Part Upload Fail: ${partResponse.status}`);
