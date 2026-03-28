@@ -28,7 +28,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ onManualSync }) => {
         // 1. Asset Generation logic
         try {
             const imageUrl = await generateVictoryImage(score);
-            setVictoryImage(imageUrl || "https://storage.googleapis.com/aistudio-build-assets/victory_2048.png");
+            if (imageUrl) {
+                setVictoryImage(imageUrl);
+            }
         } catch (error) {
             console.error("Asset generation failed:", error);
         }
