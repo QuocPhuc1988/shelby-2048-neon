@@ -169,15 +169,16 @@ export const useGameStore = create<GameState>()(
                 };
             },
 
-            loadGameFromSnapshot: (snapshot) => {
-                const newGrid = updateGridFromTiles(snapshot.grid);
+            loadGameFromSnapshot: (snapshot: GameSnapshot) => {
+                const snapshotGrid = snapshot.grid || (snapshot as any).tiles || [];
+                const newGrid = updateGridFromTiles(snapshotGrid);
                 set({
-                    tiles: snapshot.grid,
+                    tiles: snapshotGrid,
                     grid: newGrid,
-                    score: snapshot.score,
-                    gameOver: snapshot.status.gameOver,
-                    startTime: snapshot.status.startTime,
-                    endTime: snapshot.status.endTime,
+                    score: snapshot.score || 0,
+                    gameOver: snapshot.status?.gameOver || false,
+                    startTime: snapshot.status?.startTime || Date.now(),
+                    endTime: snapshot.status?.endTime || null,
                     isMoving: false,
                     isPaused: false
                 });
@@ -197,8 +198,8 @@ export const useGameStore = create<GameState>()(
 
 function updateGridFromTiles(tiles: Tile[]) {
     const grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
-    tiles.forEach(t => {
-        if (t.x >= 0 && t.x < GRID_SIZE && t.y >= 0 && t.y < GRID_SIZE) {
+    (tiles || []).forEach(t => {
+        if (t && t.x >= 0 && t.x < GRID_SIZE && t.y >= 0 && t.y < GRID_SIZE) {
             grid[t.y][t.x] = t.value;
         }
     });

@@ -69,9 +69,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ onManualSync }) => {
 
             {/* Tiles */}
             <div className="absolute top-2 left-2 pointer-events-none">
-                <AnimatePresence>
-                    {tiles.map((tile) => (
-                        <Tile key={tile.id} value={tile.value} position={tile.position} />
+                <AnimatePresence mode="popLayout">
+                    {(tiles || []).map((tile) => (
+                        <Tile key={tile.id} value={tile.value} position={[tile.y, tile.x]} />
                     ))}
                 </AnimatePresence>
             </div>
