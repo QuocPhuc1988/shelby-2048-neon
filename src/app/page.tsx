@@ -134,12 +134,21 @@ export default function Home() {
         alert("Persistence Bridge Synced! 🚀");
       }
     } catch (e: any) {
-      console.error("Sync failed", e);
-      setSyncStatus('error');
-      setErrorMessage(e.message || "Đã có lỗi xảy ra.");
+      const isRejected = e.message?.toLowerCase().includes("rejected") || e.code === 4001;
+
+      if (isRejected) {
+        console.warn("[Sync] User rejected the transaction.");
+        setSyncStatus('idle');
+      } else {
+        console.error("Sync failed", e);
+        setSyncStatus('error');
+        setErrorMessage(e.message || "Đã có lỗi xảy ra.");
+      }
     } finally {
       const { setPaused } = useGameStore.getState();
       setPaused(false);
+      // Switch back to Profile to see results if it was the original tab
+      if (originalTab === 'PROFILE') setActiveTab('PROFILE');
     }
   };
 

@@ -107,11 +107,15 @@ export async function fetchPlayerState(accountAddress: string): Promise<GameSnap
         console.log(`[Persistence] Fetching savegame: ${fileName}`);
 
         // Note: Using storage public URL if possible, otherwise we check if it exists
-        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/blobs/${accountAddress}/${fileName}`, {
+        // Standard Shelbynet pattern: blobs are global by name, no account prefix in URL
+        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/blobs/${fileName}`, {
             headers: HEADERS
         });
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+            if (response.status !== 404) console.warn("[Persistence] Fetch error:", response.status);
+            return null;
+        }
         return await response.json();
     } catch (e) {
         console.warn("[Persistence] No existing save found or fetch failed.");
@@ -207,10 +211,11 @@ export async function submitVerifiedPicture(
 
 export async function fetchLeaderboard(): Promise<any[]> {
     try {
-        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/leaderboard`, { headers: HEADERS });
+        // Try multiple variations if necessary, but start with the most likely
+        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/multipart-uploads?check=ranking`, { headers: HEADERS });
         if (!response.ok) return [];
         const data = await response.json();
-        return data.entries || [];
+        return data.entries || data.ranking || [];
     } catch (e) {
         return [];
     }
