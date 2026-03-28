@@ -1,11 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useGameStore } from '@/store/useGameStore';
-import { Trophy, Zap, Globe, ShoppingBag, LayoutGrid, User, RotateCcw, Save, ShieldCheck, RefreshCw, Loader2, MessageSquare, Image as ImageIcon, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchLeaderboard, fetchPlayerState } from '@/lib/shelby-protocol';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { generateVictoryImage } from '@/services/geminiService';
+import {
+    Trophy, Zap, Globe, ShoppingBag, LayoutGrid, User, RotateCcw,
+    Save, ShieldCheck, RefreshCw, Loader2, MessageSquare,
+    Image as ImageIcon, Heart, CheckCircle2, ExternalLink
+} from 'lucide-react';
+
+const OFFICIAL_VICTORY_IMAGE = "https://storage.googleapis.com/aistudio-build-assets/victory_2048.png";
 
 // --- SUB-COMPONENTS ---
 const GameGrid = () => {
@@ -34,25 +41,86 @@ const GameGrid = () => {
                 ))}
             </div>
 
-            {/* VICTORY OVERLAY */}
-            {won && (
-                <div className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in zoom-in duration-300 rounded-lg">
-                    <Trophy size={64} className="text-yellow-500 mb-4 drop-shadow-[0_0_20px_rgba(234,179,8,0.5)]" />
-                    <h2 className="text-4xl font-black text-white italic tracking-tighter mb-2 uppercase">VICTORY!</h2>
-                    <p className="text-[10px] font-bold text-gray-400 mb-6 uppercase tracking-[0.2em]">You reached the 2048 tile!</p>
-                    {victoryImage && (
-                        <img src={victoryImage} alt="Victory" className="w-32 h-32 rounded-xl mb-6 shadow-2xl border-2 border-yellow-500/50" />
-                    )}
-                    <button
-                        onClick={reset}
-                        className="px-8 py-3 bg-yellow-500 text-black font-black rounded-xl uppercase tracking-widest text-xs active:scale-95 transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)]"
-                    >
-                        Continue Playing
-                    </button>
-                </div>
-            )}
 
-            {isPaused && (
+            {/* GAME OVER / VICTORY OVERLAY (User Template Integration) */}
+            <AnimatePresence>
+                {(gameOver || won) && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 rounded-xl backdrop-blur-md z-[100] p-6 text-center"
+                    >
+                        {isProcessing ? (
+                            <div className="flex flex-col items-center gap-4">
+                                <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
+                                <p className="text-cyan-400 font-bold animate-pulse uppercase tracking-widest text-[10px]">
+                                    Generating Victory Asset & Recording on Shelby...
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center gap-4 w-full">
+                                <h2 className={`text-4xl font-black italic tracking-tighter uppercase ${won ? 'text-emerald-400' : 'text-red-500'} drop-shadow-[0_0_20px_rgba(0,0,0,1)]`}>
+                                    {won ? 'Victory!' : 'Game Over'}
+                                </h2>
+
+                                {victoryImage && (
+                                    <motion.div
+                                        initial={{ scale: 0.8, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        className="relative group"
+                                    >
+                                        <img
+                                            src={victoryImage}
+                                            alt="Victory"
+                                            className="w-32 h-32 rounded-xl border-2 border-cyan-500/50 shadow-2xl"
+                                        />
+                                    </motion.div>
+                                )}
+
+                                {txHash && (
+                                    <div className="flex flex-col items-center gap-2 mt-2">
+                                        <div className="flex items-center gap-2 text-cyan-400 text-[10px] font-mono bg-cyan-950/30 px-4 py-2 rounded-lg border border-cyan-500/30">
+                                            <CheckCircle2 size={14} />
+                                            <div className="flex flex-col items-start text-left">
+                                                <span className="text-[7px] uppercase tracking-widest text-cyan-500/60 font-black">Shelby Testnet Verified</span>
+                                                <span>{txHash.slice(0, 10)}...{txHash.slice(-8)}</span>
+                                            </div>
+                                        </div>
+                                        <a
+                                            href={`https://explorer.shelby.xyz/testnet/txn/${txHash}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-cyan-400 hover:text-cyan-300 text-[8px] uppercase tracking-[0.2em] font-black flex items-center gap-2 transition-all"
+                                        >
+                                            View on Shelby Explorer <ExternalLink size={10} />
+                                        </a>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 mt-2">
+                                    <button
+                                        onClick={reset}
+                                        className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/10 transition-all font-black uppercase text-[10px] tracking-widest active:scale-95"
+                                    >
+                                        Try Again
+                                    </button>
+                                    {victoryImage && (
+                                        <a
+                                            href={victoryImage}
+                                            download="shelby-victory.png"
+                                            className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl border border-cyan-400 transition-all font-black uppercase text-[10px] tracking-widest flex items-center gap-2 active:scale-95"
+                                        >
+                                            Save
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {isPaused && !gameOver && !won && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-lg z-50">
                     <div className="flex flex-col items-center gap-2">
                         <Loader2 className="animate-spin text-cyan-400" size={32} />
@@ -157,6 +225,43 @@ export default function GameBoard({ activeTab, setActiveTab, onManualSync, syncS
             loadRanking();
         }
     }, [activeTab]);
+
+    const handleGameOver = useCallback(async () => {
+        const { gameOver, isProcessing, victoryImage, score, setProcessing, setVictoryImage, setTxHash } = useGameStore.getState();
+        if (!gameOver || isProcessing || victoryImage) return;
+
+        setProcessing(true);
+        try {
+            const imageUrl = await generateVictoryImage(score);
+            setVictoryImage(imageUrl || OFFICIAL_VICTORY_IMAGE);
+        } catch (error) {
+            setVictoryImage(OFFICIAL_VICTORY_IMAGE);
+        }
+
+        if (connected && account) {
+            try {
+                const transaction: any = {
+                    data: {
+                        function: "0x1::aptos_account::transfer",
+                        functionArguments: ["0x1", "100"],
+                    }
+                };
+                const { signAndSubmitTransaction } = (useWallet as any)();
+                if (signAndSubmitTransaction) {
+                    const response = await signAndSubmitTransaction(transaction);
+                    setTxHash(response.hash);
+                }
+            } catch (error) {
+                console.error("Transaction failed:", error);
+            }
+        }
+        setProcessing(false);
+    }, [connected, account]);
+
+    const { gameOver } = useGameStore();
+    useEffect(() => {
+        if (gameOver) handleGameOver();
+    }, [gameOver, handleGameOver]);
 
     const handleRestore = async () => {
         if (!account) return;

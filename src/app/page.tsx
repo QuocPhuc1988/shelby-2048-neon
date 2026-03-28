@@ -147,8 +147,6 @@ export default function Home() {
     } finally {
       const { setPaused } = useGameStore.getState();
       setPaused(false);
-      // Switch back to Profile to see results if it was the original tab
-      if (originalTab === 'PROFILE') setActiveTab('PROFILE');
     }
   };
 
