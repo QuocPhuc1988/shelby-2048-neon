@@ -129,13 +129,14 @@ const MissionView = () => (
 
 // --- MAIN COMPONENT ---
 interface GameBoardProps {
+    activeTab: 'PLAY' | 'GLOBAL' | 'SHOP' | 'FEED' | 'PROFILE';
+    setActiveTab: (tab: any) => void;
     onManualSync?: () => Promise<void>;
     syncStatus?: string;
     totalTime?: number;
 }
 
-export default function GameBoard({ onManualSync, syncStatus = 'idle', totalTime = 0 }: GameBoardProps) {
-    const [activeTab, setActiveTab] = useState<'PLAY' | 'GLOBAL' | 'SHOP' | 'FEED' | 'PROFILE'>('PLAY');
+export default function GameBoard({ activeTab, setActiveTab, onManualSync, syncStatus = 'idle', totalTime = 0 }: GameBoardProps) {
     const { score, bestScore, initGame, loadGameFromSnapshot } = useGameStore();
     const { connected, account } = useWallet();
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
