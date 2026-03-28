@@ -139,7 +139,23 @@ export default function Home() {
 
       if (jsonResult) {
         setSyncStatus('success');
-        if (jsonResult.hash) setLastTxHash(jsonResult.hash);
+        const { setTxHash, addToFeed } = useGameStore.getState();
+
+        const txHash = jsonResult.hash || "0x_synced";
+        setTxHash(txHash);
+
+        // Convert blob to base64 for local feed preview (Optional/Simplistic for now)
+        const reader = new FileReader();
+        reader.readAsDataURL(imageBlob);
+        reader.onloadend = () => {
+          const base64data = reader.result as string;
+          addToFeed({
+            score,
+            image: base64data,
+            address: account.address.toString()
+          });
+        };
+
         alert("Persistence Bridge Synced! 🚀 (Proof + State)");
       }
     } catch (e: any) {

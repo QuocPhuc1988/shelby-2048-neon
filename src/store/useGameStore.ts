@@ -21,37 +21,77 @@ export type GameSnapshot = {
 };
 
 type GameState = {
+    // Standard State
     tiles: Tile[];
+    grid: (number | null)[][];
     score: number;
     bestScore: number;
     gameOver: boolean;
+    won: boolean;
+
+    // UI & Animations
     isMoving: boolean;
     isShaking: boolean;
     isPaused: boolean;
+
+    // Timer & Identity
     startTime: number | null;
     endTime: number | null;
+    nextId: number;
+
+    // Extended State (Persistence & Sharing)
+    isProcessing: boolean;
+    victoryImage: string | null;
+    txHash: string | null;
+    feed: { id: string; score: number; image: string; address: string; timestamp: number }[];
+
+    // Actions
     initGame: () => void;
     move: (direction: 'up' | 'down' | 'left' | 'right') => void;
     setPaused: (paused: boolean) => void;
+    setProcessing: (status: boolean) => void;
+    setVictoryImage: (url: string | null) => void;
+    setTxHash: (hash: string | null) => void;
+    addToFeed: (post: { score: number; image: string; address: string }) => void;
+    reset: () => void;
+
+    // Bridge Ops
     getGameSnapshot: () => GameSnapshot;
     loadGameFromSnapshot: (snapshot: GameSnapshot) => void;
 };
 
 const GRID_SIZE = 4;
-let nextId = 1;
+let nextIdInternal = 1;
 
 export const useGameStore = create<GameState>()(
     persist(
         (set, get) => ({
             tiles: [],
+            grid: Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null)),
             score: 0,
             bestScore: 0,
             gameOver: false,
+            won: false,
             isMoving: false,
             isShaking: false,
             isPaused: false,
             startTime: null,
             endTime: null,
+            nextId: 0,
+            isProcessing: false,
+            victoryImage: null,
+            txHash: null,
+            feed: [],
+
+            setProcessing: (isProcessing) => set({ isProcessing }),
+            setVictoryImage: (victoryImage) => set({ victoryImage }),
+            setTxHash: (txHash) => set({ txHash }),
+            addToFeed: (post) => set((state) => ({
+                feed: [
+                    { ...post, id: Math.random().toString(36).substring(2, 9), timestamp: Date.now() },
+                    ...state.feed
+                ]
+            })),
 
             initGame: () => {
                 const t1 = createTile(Math.floor(Math.random() * 4), Math.floor(Math.random() * 4));
@@ -59,20 +99,30 @@ export const useGameStore = create<GameState>()(
                 while (t1.x === t2.x && t1.y === t2.y) {
                     t2 = createTile(Math.floor(Math.random() * 4), Math.floor(Math.random() * 4));
                 }
+
+                const newGrid = updateGridFromTiles([t1, t2]);
+
                 set({
                     tiles: [t1, t2],
+                    grid: newGrid,
                     score: 0,
                     gameOver: false,
+                    won: false,
                     isMoving: false,
                     isShaking: false,
                     isPaused: false,
                     startTime: Date.now(),
-                    endTime: null
+                    endTime: null,
+                    victoryImage: null,
+                    txHash: null,
+                    isProcessing: false
                 });
             },
 
+            reset: () => get().initGame(),
+
             move: (direction) => {
-                const { tiles, score, bestScore, gameOver, isMoving, isPaused } = get();
+                const { tiles, score, bestScore, gameOver, isMoving, isPaused, won } = get();
                 if (gameOver || isMoving || isPaused) return;
 
                 const { nextTiles, addedScore, moved, maxMergedValue } = calculateMove(tiles, direction);
@@ -89,12 +139,17 @@ export const useGameStore = create<GameState>()(
                         const finalTiles = settleMerge(nextTiles);
                         const spawnedTiles = spawnRandomTile(finalTiles);
                         const isGameOver = checkGameOver(spawnedTiles);
+                        const hasWon = won || spawnedTiles.some(t => t.value === 2048);
+
+                        const newGrid = updateGridFromTiles(spawnedTiles);
 
                         set({
                             tiles: spawnedTiles,
+                            grid: newGrid,
                             score: score + addedScore,
                             bestScore: Math.max(bestScore, score + addedScore),
                             gameOver: isGameOver,
+                            won: hasWon,
                             endTime: isGameOver ? Date.now() : null,
                             isMoving: false
                         });
@@ -115,8 +170,10 @@ export const useGameStore = create<GameState>()(
             },
 
             loadGameFromSnapshot: (snapshot) => {
+                const newGrid = updateGridFromTiles(snapshot.grid);
                 set({
                     tiles: snapshot.grid,
+                    grid: newGrid,
                     score: snapshot.score,
                     gameOver: snapshot.status.gameOver,
                     startTime: snapshot.status.startTime,
@@ -127,13 +184,26 @@ export const useGameStore = create<GameState>()(
             }
         }),
         {
-            name: '2048-ultimate-engine',
-            partialize: (state) => ({ bestScore: state.bestScore }),
+            name: '2048-shelby-engine-v2.9',
+            partialize: (state) => ({
+                bestScore: state.bestScore,
+                feed: state.feed
+            }),
         }
     )
 );
 
-// --- Core Helper Logic (Hardcore Edition) ---
+// --- Core Helper Logic ---
+
+function updateGridFromTiles(tiles: Tile[]) {
+    const grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+    tiles.forEach(t => {
+        if (t.x >= 0 && t.x < GRID_SIZE && t.y >= 0 && t.y < GRID_SIZE) {
+            grid[t.y][t.x] = t.value;
+        }
+    });
+    return grid;
+}
 
 function createTile(x: number, y: number, value?: number): Tile {
     if (!value) {
@@ -142,7 +212,7 @@ function createTile(x: number, y: number, value?: number): Tile {
         else if (rand < 0.30) value = 4;
         else value = 2;
     }
-    return { id: Date.now() + nextId++, x, y, value };
+    return { id: Date.now() + nextIdInternal++, x, y, value };
 }
 
 function calculateMove(tiles: Tile[], direction: string) {
@@ -209,7 +279,7 @@ function settleMerge(tiles: Tile[]): Tile[] {
             const partner = tiles.find(t => t.id === tile.mergedFrom![1]);
             const newValue = tile.value * 2;
             finalTiles.push({
-                id: Date.now() + nextId++,
+                id: Date.now() + nextIdInternal++,
                 x: tile.x,
                 y: tile.y,
                 value: newValue
@@ -228,11 +298,9 @@ function settleMerge(tiles: Tile[]): Tile[] {
     return finalTiles;
 }
 
-/**
- * HARDCORE MODE: Spawn 2 tiles per move.
- */
 function spawnRandomTile(tiles: Tile[]): Tile[] {
     let newTiles = [...tiles];
+    // HARDCORE: Spawn 2 tiles
     for (let i = 0; i < 2; i++) {
         const occupied = new Set(newTiles.map(t => `${t.x},${t.y}`));
         const empty: [number, number][] = [];

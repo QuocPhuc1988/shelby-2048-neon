@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/useGameStore';
-import { Trophy, Zap, Globe, ShoppingBag, LayoutGrid, User, RotateCcw, Save, ShieldCheck, RefreshCw, Loader2 } from 'lucide-react';
+import { Trophy, Zap, Globe, ShoppingBag, LayoutGrid, User, RotateCcw, Save, ShieldCheck, RefreshCw, Loader2, MessageSquare, Image as ImageIcon, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchLeaderboard, fetchPlayerState } from '@/lib/shelby-protocol';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 
 // --- SUB-COMPONENTS ---
 const GameGrid = () => {
-    const { tiles, isMoving, isShaking, isPaused } = useGameStore();
+    const { tiles, isMoving, isShaking, isPaused, won, victoryImage, reset } = useGameStore();
     return (
         <div className={`relative bg-[#111116] p-2 rounded-xl border-4 border-[#1c1c24] w-full aspect-square max-w-[400px] shadow-[0_0_40px_rgba(0,0,0,0.5)] transition-opacity duration-300 ${isShaking ? 'animate-shake' : ''} ${isPaused ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
             <div className="grid grid-cols-4 grid-rows-4 gap-2 w-full h-full">
@@ -33,6 +33,25 @@ const GameGrid = () => {
                     </div>
                 ))}
             </div>
+
+            {/* VICTORY OVERLAY */}
+            {won && (
+                <div className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in zoom-in duration-300 rounded-lg">
+                    <Trophy size={64} className="text-yellow-500 mb-4 drop-shadow-[0_0_20px_rgba(234,179,8,0.5)]" />
+                    <h2 className="text-4xl font-black text-white italic tracking-tighter mb-2 uppercase">VICTORY!</h2>
+                    <p className="text-[10px] font-bold text-gray-400 mb-6 uppercase tracking-[0.2em]">You reached the 2048 tile!</p>
+                    {victoryImage && (
+                        <img src={victoryImage} alt="Victory" className="w-32 h-32 rounded-xl mb-6 shadow-2xl border-2 border-yellow-500/50" />
+                    )}
+                    <button
+                        onClick={reset}
+                        className="px-8 py-3 bg-yellow-500 text-black font-black rounded-xl uppercase tracking-widest text-xs active:scale-95 transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)]"
+                    >
+                        Continue Playing
+                    </button>
+                </div>
+            )}
+
             {isPaused && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-lg z-50">
                     <div className="flex flex-col items-center gap-2">
@@ -44,6 +63,49 @@ const GameGrid = () => {
         </div>
     );
 };
+
+const FeedView = () => {
+    const { feed } = useGameStore();
+    return (
+        <div className="w-full flex flex-col gap-4 p-4 animate-in fade-in slide-in-from-bottom-4">
+            <h3 className="text-xl font-black italic text-[#ff2a75] uppercase tracking-tighter">Social Feed</h3>
+            {feed.length === 0 ? (
+                <div className="p-10 text-center opacity-30 italic text-sm border-2 border-dashed border-white/5 rounded-3xl">
+                    Your achievements will appear here.
+                </div>
+            ) : (
+                <div className="flex flex-col gap-6">
+                    {feed.map((post) => (
+                        <div key={post.id} className="bg-[#111116] rounded-3xl overflow-hidden border border-white/5 shadow-2xl">
+                            <div className="p-4 flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#ff2a75] to-indigo-500 flex items-center justify-center text-[10px] font-black uppercase text-white">
+                                    {post.address.slice(2, 4)}
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-white uppercase tracking-wider">{post.address.slice(0, 6)}...{post.address.slice(-4)}</span>
+                                    <span className="text-[8px] font-bold text-gray-500 uppercase">{new Date(post.timestamp).toLocaleString()}</span>
+                                </div>
+                            </div>
+                            <img src={post.image} alt="High Score" className="w-full aspect-square object-cover" />
+                            <div className="p-4 flex flex-col gap-2">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex gap-4">
+                                        <Heart size={20} className="text-gray-600 hover:text-[#ff2a75] cursor-pointer transition-colors" />
+                                        <MessageSquare size={20} className="text-gray-600 hover:text-cyan-400 cursor-pointer transition-colors" />
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-xs font-black text-[#ff2a75]">{post.score.toLocaleString()}</span>
+                                        <span className="text-[7px] font-black text-gray-600 uppercase">Score</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 const MissionView = () => (
     <div className="w-full flex flex-col gap-4 p-4 animate-in fade-in slide-in-from-bottom-4">
@@ -73,7 +135,7 @@ interface GameBoardProps {
 }
 
 export default function GameBoard({ onManualSync, syncStatus = 'idle', totalTime = 0 }: GameBoardProps) {
-    const [activeTab, setActiveTab] = useState<'PLAY' | 'GLOBAL' | 'SHOP' | 'DAILY' | 'PROFILE'>('PLAY');
+    const [activeTab, setActiveTab] = useState<'PLAY' | 'GLOBAL' | 'SHOP' | 'FEED' | 'PROFILE'>('PLAY');
     const { score, bestScore, initGame, loadGameFromSnapshot } = useGameStore();
     const { connected, account } = useWallet();
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -154,7 +216,7 @@ export default function GameBoard({ onManualSync, syncStatus = 'idle', totalTime
                         </motion.div>
                     )}
 
-                    {activeTab === 'DAILY' && <MissionView key="daily" />}
+                    {activeTab === 'FEED' && <FeedView key="feed" />}
 
                     {activeTab === 'GLOBAL' && (
                         <motion.div
@@ -254,10 +316,10 @@ export default function GameBoard({ onManualSync, syncStatus = 'idle', totalTime
             {/* 2. BOTTOM NAVIGATION BAR (The dApp Heart) */}
             <nav className="fixed bottom-0 left-0 right-0 h-24 bg-[#0d0d12]/80 backdrop-blur-2xl border-t border-white/5 flex justify-around items-center px-6 z-[100] safe-area-bottom">
                 <NavButton active={activeTab === 'PLAY'} icon={<LayoutGrid />} label="PLAY" onClick={() => setActiveTab('PLAY')} />
-                <NavButton active={activeTab === 'GLOBAL'} icon={<Globe />} label="GLOBAL" onClick={() => setActiveTab('GLOBAL')} />
+                <NavButton active={activeTab === 'GLOBAL'} icon={<Globe />} label="RANK" onClick={() => setActiveTab('GLOBAL')} />
+                <NavButton active={activeTab === 'FEED'} icon={<MessageSquare />} label="FEED" onClick={() => setActiveTab('FEED')} />
                 <NavButton active={activeTab === 'SHOP'} icon={<ShoppingBag />} label="SHOP" onClick={() => setActiveTab('SHOP')} />
-                <NavButton active={activeTab === 'DAILY'} icon={<Trophy />} label="DAILY" onClick={() => setActiveTab('DAILY')} />
-                <NavButton active={activeTab === 'PROFILE'} icon={<User />} label="PROFILE" onClick={() => setActiveTab('PROFILE')} />
+                <NavButton active={activeTab === 'PROFILE'} icon={<User />} label="ME" onClick={() => setActiveTab('PROFILE')} />
             </nav>
 
             {/* Footer spacing */}
