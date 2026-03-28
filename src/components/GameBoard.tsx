@@ -16,7 +16,10 @@ const OFFICIAL_VICTORY_IMAGE = "https://storage.googleapis.com/aistudio-build-as
 
 // --- SUB-COMPONENTS ---
 const GameGrid = () => {
-    const { tiles, isMoving, isShaking, isPaused, won, victoryImage, reset } = useGameStore();
+    const {
+        tiles, isMoving, isShaking, isPaused, won, gameOver,
+        isProcessing, victoryImage, txHash, reset
+    } = useGameStore();
     return (
         <div className={`relative bg-[#111116] p-2 rounded-xl border-4 border-[#1c1c24] w-full aspect-square max-w-[400px] shadow-[0_0_40px_rgba(0,0,0,0.5)] transition-opacity duration-300 ${isShaking ? 'animate-shake' : ''} ${isPaused ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
             <div className="grid grid-cols-4 grid-rows-4 gap-2 w-full h-full">
