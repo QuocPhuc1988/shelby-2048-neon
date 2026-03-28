@@ -107,8 +107,8 @@ export async function fetchPlayerState(accountAddress: string): Promise<GameSnap
         console.log(`[Persistence] Fetching savegame: ${fileName}`);
 
         // Note: Using storage public URL if possible, otherwise we check if it exists
-        // Standard Shelbynet pattern: blobs are global by name, no account prefix in URL
-        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/blobs/${fileName}`, {
+        // Standard Shelbynet pattern: blobs are indexed by accountAddress/fileName
+        const response = await fetch(`${SHELBY_STORAGE_RPC}/v1/blobs/${accountAddress}/${fileName}`, {
             headers: HEADERS
         });
 
